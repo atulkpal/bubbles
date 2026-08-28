@@ -5,11 +5,6 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Color.Companion.Green
-import androidx.compose.ui.graphics.Color.Companion.Transparent
-
-val Gold = Color(0xFFFFD700)
-val PrismColor = Color(0xFFFF00FF)
 
 val LightColorScheme = lightColorScheme(
     primary = Color(0xFF6200EE),

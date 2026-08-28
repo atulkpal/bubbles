@@ -8,7 +8,7 @@ import com.ashwathai.bubbles.domain.model.Particle
 import com.ashwathai.bubbles.domain.model.PopMessage
 import com.ashwathai.bubbles.domain.model.PowerUpType
 import androidx.compose.ui.graphics.Color
-import com.ashwathai.bubbles.ui.theme.Gold
+import com.ashwathai.bubbles.ui.theme.luxury.LuxuryColors
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
@@ -125,7 +125,7 @@ class SpawnBubblesUseCase {
         }
 
         val color = when {
-            isPowerUp -> Gold
+            isPowerUp -> LuxuryColors.Gold400
             bubbleType == BubbleType.BOMB -> BOMB_COLOR
             bubbleType == BubbleType.RAINBOW -> RAINBOW_COLOR
             bubbleType == BubbleType.FROZEN -> FROZEN_COLOR
@@ -249,7 +249,7 @@ class HandleTapUseCase {
             }
             val msg = PopMessage(
                 id = System.nanoTime() + 1,
-                text = "❄ CRACK!",
+                text = "CRACK!",
                 x = hitBubble.x,
                 y = hitBubble.y,
                 rotation = 0f,
@@ -423,24 +423,24 @@ class HandleTapUseCase {
             bossDown -> {
                 messages.add(PopMessage(
                     id = System.nanoTime() + 5,
-                    text = "👑 BOSS DOWN! +$scoreGain",
+                    text = "BOSS DOWN! +$scoreGain",
                     x = boss!!.x,
                     y = boss.y,
                     rotation = 0f,
                     scale = 1.2f,
-                    color = Gold
+                    color = LuxuryColors.Gold400
                 ))
                 scoreGain += 100
             }
             poppedSize >= 4 -> {
                 messages.add(PopMessage(
                     id = System.nanoTime() + 5,
-                    text = "🔥 CHAIN x$poppedSize! +$scoreGain",
+                    text = "CHAIN x$poppedSize! +$scoreGain",
                     x = bubbles.first().x,
                     y = bubbles.first().y,
                     rotation = 0f,
                     scale = 1.1f,
-                    color = Gold,
+                    color = LuxuryColors.Gold400,
                     fontSize = 30
                 ))
             }

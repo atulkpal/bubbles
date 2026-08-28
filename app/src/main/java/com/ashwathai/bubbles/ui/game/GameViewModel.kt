@@ -27,7 +27,7 @@ import com.ashwathai.bubbles.domain.usecase.SpawnBubblesUseCase
 import com.ashwathai.bubbles.domain.usecase.UpdateBubblesUseCase
 import com.ashwathai.bubbles.domain.usecase.UpdateMessagesUseCase
 import com.ashwathai.bubbles.domain.usecase.UpdateParticlesUseCase
-import com.ashwathai.bubbles.ui.theme.Gold
+import com.ashwathai.bubbles.ui.theme.luxury.LuxuryColors
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -389,17 +389,18 @@ class GameViewModel(
 
         if (result.isBigPop) {
             soundManager.playBigPop()
-            soundManager.vibrate(30)
+            soundManager.vibrateBigPop()
             shakeTrauma = min(1f, shakeTrauma + 0.6f)
             hitStopRemaining = 0.08f
         } else {
             soundManager.playPop()
-            soundManager.vibrate(15)
+            soundManager.vibratePop()
             shakeTrauma = min(1f, shakeTrauma + 0.12f)
         }
 
         if (combo >= 3) {
             soundManager.playCombo()
+            soundManager.vibrateCombo()
             messages.add(
                 PopMessage(
                     id = System.nanoTime() + 7,
@@ -408,7 +409,7 @@ class GameViewModel(
                     y = if (bubbles.isNotEmpty()) bubbles.first().y else height / 3f,
                     rotation = 0f,
                     scale = 1.2f,
-                    color = Gold,
+                    color = LuxuryColors.Gold400,
                     fontSize = 34
                 )
             )
@@ -465,7 +466,7 @@ class GameViewModel(
 
     private fun completeLevel() {
         soundManager.playLevelUp()
-        soundManager.vibrate(40)
+        soundManager.vibrateLevelUp()
 
         val currentLevel = (gameState as? GameState.Playing)?.currentLevel ?: 1
         val score = (gameState as? GameState.Playing)?.score ?: 0
@@ -541,7 +542,7 @@ class GameViewModel(
             soundManager.playGameOver()
         } else if (!isTimeUp && won) {
             soundManager.playLevelUp()
-            soundManager.vibrate(60)
+            soundManager.vibrateLevelUp()
         } else {
             soundManager.playGameOver()
         }

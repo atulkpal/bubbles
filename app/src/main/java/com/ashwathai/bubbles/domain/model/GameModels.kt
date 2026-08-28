@@ -107,7 +107,7 @@ data class GameConfig(
     val minRadius: Float = 40f,
     val radiusStep: Float = 30f,
     val maxBubbleLevel: Int = 3,
-    val popTexts: List<String> = listOf("Pop!", "Splendid!", "Awesome!", "Boom!", "Nice!", "Bubble!", "Magic!", "Splosh!", "🫧", "✨", "💥", "🎉"),
+    val popTexts: List<String> = listOf("Pop!", "Splendid!", "Awesome!", "Boom!", "Nice!", "Bubble!", "Magic!", "Splosh!", "Glorious!", "Luminous!", "Serene!", "Beautiful!"),
     val particleCount: Int = 12,
     val levels: List<LevelConfig> = listOf(
         LevelConfig(1, 6, 2.0f, 300f, 0.03f, timeLimit = 60f),

@@ -9,6 +9,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
 import com.ashwathai.bubbles.R
+import com.ashwathai.bubbles.ui.theme.luxury.LuxuryHaptics
 import kotlin.random.Random
 
 class SoundManager(private val context: Context) {
@@ -133,15 +134,37 @@ class SoundManager(private val context: Context) {
         }
     }
 
-    fun vibrate(durationMs: Long) {
+    fun vibratePop() {
+        vibratePattern(LuxuryHaptics.PopPattern)
+    }
+
+    fun vibrateBigPop() {
+        vibratePattern(LuxuryHaptics.BigPopPattern)
+    }
+
+    fun vibrateCombo() {
+        vibratePattern(LuxuryHaptics.ComboPattern)
+    }
+
+    fun vibrateBossHit() {
+        vibratePattern(LuxuryHaptics.BossHitPattern)
+    }
+
+    fun vibrateLevelUp() {
+        vibratePattern(LuxuryHaptics.LevelUpPattern)
+    }
+
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun vibratePattern(pattern: LongArray) {
         if (!hapticsEnabled) return
         val v = vibrator ?: return
         if (!v.hasVibrator()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            v.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+            val amplitudes = IntArray(pattern.size) { if (it % 2 == 0) VibrationEffect.DEFAULT_AMPLITUDE else 0 }
+            v.vibrate(VibrationEffect.createWaveform(pattern, amplitudes, -1))
         } else {
             @Suppress("DEPRECATION")
-            v.vibrate(durationMs)
+            v.vibrate(pattern, -1)
         }
     }
 
