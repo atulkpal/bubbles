@@ -25,7 +25,9 @@ Welcome, Agent! This document is your single source of truth for understanding t
 │   ├── setup.md                             # Development environment setup guide
 │   ├── contributing.md                      # Contribution guidelines
 │   └── changelog.md                         # Version history
-├── website/                                 # GitHub Pages site (privacy, about, data deletion)
+├── .github/workflows/
+│   └── deploy-website.yml               # GitHub Actions: auto-deploy website to Pages
+├── website/                                 # GitHub Pages site source (privacy, about, data deletion)
 │   ├── index.html
 │   ├── about.html
 │   ├── privacy.html
@@ -110,7 +112,7 @@ Welcome, Agent! This document is your single source of truth for understanding t
 
 ### Play Store & Web
 17. **Play Store Scripts:** Automated upload, screenshot management, closed testing promotion.
-18. **GitHub Pages Website:** Landing page, privacy policy, about, data deletion.
+18. **GitHub Pages Website:** Landing page, privacy policy, about, data deletion — auto-deployed via GitHub Actions workflow (`.github/workflows/deploy-website.yml`). Site live at `https://atulkpal.github.io/bubbles/`.
 19. **Repository Documentation:** Architecture, setup guide, contributing guidelines, changelog.
 
 ---
@@ -119,10 +121,10 @@ Welcome, Agent! This document is your single source of truth for understanding t
 
 ### High Priority
 - [ ] **Settings Screen Polish:** Upgrade buttons restyled to glass pills; overall layout/spacing/visual hierarchy refinement; skin/theme card selection states; close button styling.
-- [ ] **Release Signing:** Generate proper release keystore (current `release-key.jks` is a placeholder).
+- [x] **Release Signing:** Generate proper release keystore (current `release-key.jks` is a placeholder).
 - [ ] **ProGuard Rules:** Verify R8/obfuscation doesn't break DataStore or Compose.
-- [ ] **Ad Integration:** ironSource LevelPlay banner ads are live. Add rewarded + interstitial ads for monetization.
-- [ ] **Play Store Listing:** Finalize store description, screenshots, and feature graphic.
+- [x] **Ad Integration:** ironSource LevelPlay banner ads are live. Add rewarded + interstitial ads for monetization.
+- [x] **Play Store Listing:** Finalize store description, screenshots, and feature graphic.
 
 ### Medium Priority
 - [ ] **Unit Tests:** Cover GameUseCases, repositories, and GameViewModel logic.

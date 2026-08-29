@@ -71,9 +71,10 @@ bubbles/
 │               ├── LuxuryMotion.kt
 │               ├── LuxuryTokens.kt
 │               └── LuxuryTypography.kt
+├── .github/workflows/             # GitHub Actions (auto-deploy website)
 ├── docs/                           # Repository documentation
 ├── scripts/                        # Play Store automation
-├── website/                        # GitHub Pages site
+├── website/                        # GitHub Pages site source
 └── play-listing-assets/            # Store listing screenshots
 ```
 
@@ -85,6 +86,14 @@ bubbles/
 | [Setup Guide](docs/setup.md) | Development environment setup |
 | [Contributing](docs/contributing.md) | Contribution guidelines |
 | [Changelog](docs/changelog.md) | Version history |
+
+## Website
+
+The project website is auto-deployed to GitHub Pages via GitHub Actions:
+
+🔗 **[https://atulkpal.github.io/bubbles/](https://atulkpal.github.io/bubbles/)**
+
+Source files live in `website/`. The workflow (`.github/workflows/deploy-website.yml`) deploys on every push to `master`.
 
 ## License
 

@@ -9,9 +9,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 - Repository documentation (architecture, setup, contributing, changelog)
 - GitHub Pages website with privacy policy, about, and data deletion pages
+- GitHub Actions workflow for automatic website deployment to GitHub Pages
+- `.nojekyll` file to prevent Jekyll processing on GitHub Pages
 
 ### Changed
-- Documentation moved from `docs/` to `website/` for GitHub Pages
+- Website source lives in `website/` directory, deployed via GitHub Actions (not branch-based)
 
 ---
 

@@ -123,6 +123,17 @@ Or use Android Studio's Run button (▶️).
 ### Serialization
 - `org.jetbrains.kotlinx:kotlinx-serialization-json` — JSON serialization
 
+## GitHub Pages Deployment
+
+The website (`website/`) is auto-deployed to GitHub Pages via GitHub Actions.
+
+- **Workflow:** `.github/workflows/deploy-website.yml`
+- **Trigger:** Every push to `master`
+- **Live URL:** `https://atulkpal.github.io/bubbles/`
+- **Settings:** Repo → Settings → Pages → Source → **GitHub Actions**
+
+To deploy manually, trigger the workflow from the Actions tab → "Deploy Website" → "Run workflow".
+
 ## Troubleshooting
 
 ### Gradle Sync Fails
