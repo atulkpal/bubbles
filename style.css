@@ -395,6 +395,8 @@ p {
   pointer-events: none;
   overflow: hidden;
   z-index: 0;
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, black 40%, transparent 100%);
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, black 40%, transparent 100%);
 }
 
 .floating-bubble {
