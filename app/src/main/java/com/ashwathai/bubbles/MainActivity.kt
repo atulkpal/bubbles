@@ -53,7 +53,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,7 +80,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
+
 import com.ashwathai.bubbles.data.local.EconomyRepositoryImpl
 import com.ashwathai.bubbles.data.local.ScoreRepositoryImpl
 import com.ashwathai.bubbles.data.local.SettingsRepositoryImpl
@@ -115,12 +115,7 @@ import com.ashwathai.bubbles.ui.theme.luxury.LuxuryStat
 import com.ashwathai.bubbles.ui.theme.luxury.LuxuryTimerRing
 import com.ashwathai.bubbles.ui.theme.luxury.LuxuryToggle
 import com.ashwathai.bubbles.ui.theme.luxury.LuxuryTypography
-import com.unity3d.mediation.LevelPlayAdError
-import com.unity3d.mediation.LevelPlayAdInfo
-import com.unity3d.mediation.LevelPlayAdSize
-import com.unity3d.mediation.banner.LevelPlayBannerAdView
-import com.unity3d.mediation.banner.LevelPlayBannerAdView.Config
-import com.unity3d.mediation.banner.LevelPlayBannerAdViewListener
+
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -159,6 +154,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        LevelPlayAdManager.trackActivity(this)
         enableEdgeToEdge()
         setContent {
             BubblesTheme {
@@ -170,106 +166,6 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         soundManager.release()
         super.onDestroy()
-    }
-}
-
-@Composable
-fun AdBannerView(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-
-    // LevelPlay test banner ad unit ID — paired with the test app key "85460dcd".
-    // Replace with your real ad unit ID from grow.unity.com when you go live.
-    val adUnitId = "thnfvcsog13bhn08"
-
-    // Only load the ad once the SDK has finished initialising.
-    val sdkReady by BubblesApplication.sdkReady.collectAsStateWithLifecycle()
-    var adStatus by remember { mutableStateOf("Waiting for ad SDK") }
-    val showAdDebug = remember(context) {
-        (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-    }
-
-    if (!sdkReady) {
-        if (showAdDebug) {
-            Box(
-                modifier = modifier
-                    .fillMaxWidth()
-                    .height(50.dp)
-                    .background(LuxuryColors.Ink950.copy(alpha = 0.78f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = adStatus,
-                    style = LuxuryTypography.LabelSmall,
-                    color = Color.White.copy(alpha = 0.8f),
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-        return
-    }
-
-    val bannerAdView = remember(context, adUnitId) {
-        val config = LevelPlayBannerAdView.Config.Builder()
-            .setAdSize(LevelPlayAdSize.BANNER)
-            .build()
-        LevelPlayBannerAdView(context, adUnitId, config).apply {
-            setBannerListener(object : LevelPlayBannerAdViewListener {
-                override fun onAdLoaded(adInfo: LevelPlayAdInfo) {
-                    android.util.Log.d("LevelPlayBanner", "Ad loaded: ${adInfo.adUnitId}")
-                    adStatus = ""
-                }
-                override fun onAdLoadFailed(error: LevelPlayAdError) {
-                    android.util.Log.e("LevelPlayBanner", "Ad load failed: ${error.errorMessage}")
-                    adStatus = "Test ad failed: ${error.errorMessage}"
-                }
-                override fun onAdDisplayed(adInfo: LevelPlayAdInfo) {
-                    adStatus = ""
-                }
-                override fun onAdDisplayFailed(adInfo: LevelPlayAdInfo, error: LevelPlayAdError) {
-                    adStatus = "Test ad display failed: ${error.errorMessage}"
-                }
-                override fun onAdClicked(adInfo: LevelPlayAdInfo) {}
-                override fun onAdExpanded(adInfo: LevelPlayAdInfo) {}
-                override fun onAdCollapsed(adInfo: LevelPlayAdInfo) {}
-                override fun onAdLeftApplication(adInfo: LevelPlayAdInfo) {}
-            })
-            // Do NOT call loadAd() here — SDK may not be ready yet.
-        }
-    }
-
-    LaunchedEffect(bannerAdView) {
-        adStatus = "Loading test ad"
-        bannerAdView.loadAd()
-    }
-
-    DisposableEffect(bannerAdView) {
-        onDispose { bannerAdView.destroy() }
-    }
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(50.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        AndroidView(
-            factory = { bannerAdView },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp)
-        )
-        if (showAdDebug && adStatus.isNotEmpty()) {
-            Text(
-                text = adStatus,
-                style = LuxuryTypography.LabelSmall,
-                color = Color.White,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(LuxuryColors.Ink950.copy(alpha = 0.78f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            )
-        }
     }
 }
 
@@ -313,7 +209,8 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
 
         when (gameState) {
             is GameState.Ready -> {
-                val playedToday = todayString() == economy.dailyDate
+                val playedToday = gameViewModel.isDailyCompleted()
+                val activity = LocalContext.current as? android.app.Activity
                 StartScreen(
                     coins = economy.coins,
                     dailyBest = economy.dailyBest,
@@ -322,7 +219,34 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     onStart = { gameViewModel.startGame() },
                     onZen = { gameViewModel.startZen() },
                     onDaily = { gameViewModel.startDaily() },
-                    onSettings = { showSettings = true }
+                    onSettings = { showSettings = true },
+                    onPowerUpGuarantee = if (activity != null) {
+                        {
+                            LevelPlayAdManager.loadAndShowRewardedAd(
+                                adType = "powerup_guarantee",
+                                activity = activity,
+                                onAdLoaded = {},
+                                onAdFailed = {},
+                                onUserEarnedReward = {
+                                    gameViewModel.setGuaranteeNextPowerUp()
+                                }
+                            )
+                        }
+                    } else null,
+                    onDailyRetry = if (playedToday && activity != null) {
+                        {
+                            LevelPlayAdManager.loadAndShowRewardedAd(
+                                adType = "retry_daily",
+                                activity = activity,
+                                onAdLoaded = {},
+                                onAdFailed = {},
+                                onUserEarnedReward = {
+                                    gameViewModel.startDaily()
+                                }
+                            )
+                        }
+                    } else null,
+                    adsRemaining = LevelPlayAdManager.adsRemaining()
                 )
             }
             is GameState.Playing -> {
@@ -384,6 +308,7 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                 )
             }
             is GameState.LevelComplete -> {
+                val activity = LocalContext.current as? android.app.Activity
                 LevelCompleteScreen(
                     theme = theme,
                     score = gameState.score,
@@ -391,10 +316,25 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     completedLevel = gameState.completedLevel,
                     nextLevel = gameState.nextLevel,
                     onNext = { gameViewModel.startNextLevel() },
-                    onHome = { gameViewModel.goHome() }
+                    onHome = { gameViewModel.goHome() },
+                    onCoinBonus = if (activity != null) {
+                        {
+                            LevelPlayAdManager.loadAndShowRewardedAd(
+                                adType = "coin_bonus",
+                                activity = activity,
+                                onAdLoaded = {},
+                                onAdFailed = {},
+                                onUserEarnedReward = {
+                                    gameViewModel.addBonusCoins(50)
+                                }
+                            )
+                        }
+                    } else null,
+                    adsRemaining = LevelPlayAdManager.adsRemaining()
                 )
             }
             is GameState.GameOver -> {
+                val activity = LocalContext.current as? android.app.Activity
                 GameOverScreen(
                     theme = theme,
                     finalScore = gameState.finalScore,
@@ -409,12 +349,54 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     prestigeLevel = economy.prestigeLevel,
                     onRestart = { gameViewModel.restartGame() },
                     onHome = { gameViewModel.goHome() },
-                    onPrestige = { gameViewModel.prestige() }
+                    onPrestige = { gameViewModel.prestige() },
+                    onContinue = if (!gameState.won && !gameState.zen && activity != null) {
+                        {
+                            LevelPlayAdManager.loadAndShowRewardedAd(
+                                adType = "continue",
+                                activity = activity,
+                                onAdLoaded = {},
+                                onAdFailed = {},
+                                onUserEarnedReward = {
+                                    gameViewModel.continueGame()
+                                    gameViewModel.addTimeBonus(15f)
+                                }
+                            )
+                        }
+                    } else null,
+                    onDoubleDaily = if (gameState.daily && gameState.dailyReward > 0 && activity != null) {
+                        {
+                            LevelPlayAdManager.loadAndShowRewardedAd(
+                                adType = "double_daily",
+                                activity = activity,
+                                onAdLoaded = {},
+                                onAdFailed = {},
+                                onUserEarnedReward = {
+                                    gameViewModel.addBonusCoins(gameState.dailyReward)
+                                }
+                            )
+                        }
+                    } else null,
+                    onCoinBonus = if (!gameState.zen && activity != null) {
+                        {
+                            LevelPlayAdManager.loadAndShowRewardedAd(
+                                adType = "coin_bonus",
+                                activity = activity,
+                                onAdLoaded = {},
+                                onAdFailed = {},
+                                onUserEarnedReward = {
+                                    gameViewModel.addBonusCoins(50)
+                                }
+                            )
+                        }
+                    } else null,
+                    adsRemaining = LevelPlayAdManager.adsRemaining()
                 )
             }
         }
 
         if (showSettings) {
+            val activity = LocalContext.current as? android.app.Activity
             SettingsScreen(
                 theme = theme,
                 economy = economy,
@@ -428,11 +410,24 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                 onSelectSkin = { gameViewModel.selectSkin(it) },
                 onSelectTheme = { gameViewModel.selectTheme(it) },
                 onPrestige = { gameViewModel.prestige() },
-                onClose = { showSettings = false }
+                onClose = { showSettings = false },
+                onTrySkin = if (activity != null) {
+                    { skinName ->
+                        LevelPlayAdManager.loadAndShowRewardedAd(
+                            adType = "skin_preview",
+                            activity = activity,
+                            onAdLoaded = {},
+                            onAdFailed = {},
+                            onUserEarnedReward = {
+                                gameViewModel.previewSkin(skinName)
+                            }
+                        )
+                    }
+                } else null
             )
         }
 
-        AdBannerView(Modifier.align(Alignment.BottomCenter))
+        LevelPlayBanner(Modifier.align(Alignment.BottomCenter))
     }
 }
 
@@ -449,7 +444,10 @@ fun StartScreen(
     onStart: () -> Unit,
     onZen: () -> Unit,
     onDaily: () -> Unit,
-    onSettings: () -> Unit
+    onSettings: () -> Unit,
+    onPowerUpGuarantee: (() -> Unit)? = null,
+    onDailyRetry: (() -> Unit)? = null,
+    adsRemaining: Int = 5
 ) {
     var step by remember { mutableStateOf(0) }
     val staggerDelay = if (reducedMotion) 0L else 120L
@@ -578,6 +576,33 @@ fun StartScreen(
                     modifier = Modifier.fillMaxWidth(),
                     primary = false,
                     icon = Icons.Default.Settings
+                )
+            }
+
+            // ── Ad Buttons ──
+            AnimatedVisibility(
+                visible = staggerIndex(7) && onPowerUpGuarantee != null && adsRemaining > 0,
+                enter = fadeIn()
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                    LuxuryButton(
+                        text = "POWER-UP GUARANTEE · WATCH AD",
+                        onClick = onPowerUpGuarantee!!,
+                        modifier = Modifier.fillMaxWidth(),
+                        primary = false,
+                        icon = LuxuryIcons.Burst
+                    )
+                }
+            }
+            if (playedToday && onDailyRetry != null && adsRemaining > 0) {
+                Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                LuxuryButton(
+                    text = "RETRY DAILY · WATCH AD",
+                    onClick = onDailyRetry,
+                    modifier = Modifier.fillMaxWidth(),
+                    primary = false,
+                    icon = Icons.Default.Refresh
                 )
             }
 
@@ -969,7 +994,9 @@ fun LevelCompleteScreen(
     completedLevel: Int,
     nextLevel: Int,
     onNext: () -> Unit,
-    onHome: () -> Unit
+    onHome: () -> Unit,
+    onCoinBonus: (() -> Unit)? = null,
+    adsRemaining: Int = 5
 ) {
     Box(
         modifier = Modifier
@@ -1016,6 +1043,16 @@ fun LevelCompleteScreen(
                     modifier = Modifier.fillMaxWidth(),
                     icon = Icons.AutoMirrored.Filled.ArrowForward
                 )
+                if (onCoinBonus != null && adsRemaining > 0) {
+                    Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                    LuxuryButton(
+                        text = "+50 COINS · WATCH AD",
+                        onClick = onCoinBonus,
+                        modifier = Modifier.fillMaxWidth(),
+                        primary = false,
+                        icon = LuxuryIcons.Coin
+                    )
+                }
                 Spacer(modifier = Modifier.height(LuxurySpacing.SM))
                 LuxuryButton(
                     text = "HOME",
@@ -1044,7 +1081,11 @@ fun GameOverScreen(
     prestigeLevel: Int,
     onRestart: () -> Unit,
     onHome: () -> Unit,
-    onPrestige: () -> Unit
+    onPrestige: () -> Unit,
+    onContinue: (() -> Unit)? = null,
+    onDoubleDaily: (() -> Unit)? = null,
+    onCoinBonus: (() -> Unit)? = null,
+    adsRemaining: Int = 5
 ) {
     Box(
         modifier = Modifier
@@ -1161,6 +1202,48 @@ fun GameOverScreen(
                     icon = Icons.Default.PlayArrow
                 )
                 Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                // ── Rewarded Ad Buttons ──
+                if (!zen && !won && onContinue != null && adsRemaining > 0) {
+                    Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                    LuxuryButton(
+                        text = "CONTINUE · WATCH AD",
+                        onClick = onContinue,
+                        modifier = Modifier.fillMaxWidth(),
+                        primary = false,
+                        icon = Icons.Default.PlayArrow
+                    )
+                }
+                if (daily && dailyReward > 0 && onDoubleDaily != null && adsRemaining > 0) {
+                    Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                    LuxuryButton(
+                        text = "DOUBLE REWARD · WATCH AD",
+                        onClick = onDoubleDaily,
+                        modifier = Modifier.fillMaxWidth(),
+                        primary = false,
+                        icon = LuxuryIcons.Sparkle
+                    )
+                }
+                if (!zen && onCoinBonus != null && adsRemaining > 0) {
+                    Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                    LuxuryButton(
+                        text = "+50 COINS · WATCH AD",
+                        onClick = onCoinBonus,
+                        modifier = Modifier.fillMaxWidth(),
+                        primary = false,
+                        icon = LuxuryIcons.Coin
+                    )
+                }
+                if (adsRemaining <= 5) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "$adsRemaining ads remaining today",
+                        style = LuxuryTypography.LabelSmall,
+                        color = Color.White.copy(alpha = 0.5f),
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(LuxurySpacing.SM))
                 LuxuryButton(
                     text = "HOME",
                     onClick = onHome,
@@ -1197,7 +1280,8 @@ fun SettingsScreen(
     onSelectSkin: (String) -> Unit,
     onSelectTheme: (String) -> Unit,
     onPrestige: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onTrySkin: ((String) -> Unit)? = null
 ) {
     Box(
         modifier = Modifier
@@ -1339,7 +1423,8 @@ fun SettingsScreen(
                             skin = s,
                             locked = locked,
                             selected = selected,
-                            onClick = { if (!locked) onSelectSkin(s.name) }
+                            onClick = { if (!locked) onSelectSkin(s.name) },
+                            onTryAd = if (locked && onTrySkin != null) {{ onTrySkin(s.name) }} else null
                         )
                     }
                 }
@@ -1467,7 +1552,7 @@ fun UpgradeRow(
 }
 
 @Composable
-fun SkinCard(skin: BubbleSkin, locked: Boolean, selected: Boolean, onClick: () -> Unit) {
+fun SkinCard(skin: BubbleSkin, locked: Boolean, selected: Boolean, onClick: () -> Unit, onTryAd: (() -> Unit)? = null) {
     Column(
         modifier = Modifier
             .width(88.dp)
@@ -1517,6 +1602,17 @@ fun SkinCard(skin: BubbleSkin, locked: Boolean, selected: Boolean, onClick: () -
                 text = skin.name,
                 style = LuxuryTypography.LabelSmall,
                 color = if (selected) LuxuryColors.Gold300 else Color.White.copy(alpha = 0.7f)
+            )
+        }
+        if (locked && onTryAd != null) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "TRY",
+                style = LuxuryTypography.LabelSmall,
+                color = LuxuryColors.Gold400,
+                modifier = Modifier
+                    .clickable { onTryAd() }
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
             )
         }
     }

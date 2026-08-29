@@ -3,47 +3,174 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bubbles - A Relaxing Bubble Popping Game</title>
+  <title>Bubbles — A Luxury Bubble Popping Game</title>
+  <meta name="description" content="Pop, breathe, repeat. A premium bubble-popping stress buster with glass UI, gold accents, and zen gameplay.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>🫧 Bubbles</h1>
-    <p>A relaxing bubble popping game with levels, power-ups, coins, and zen mode</p>
+
+  <!-- Header -->
+  <header class="site-header">
+    <a href="index.html" class="logo">
+      <span class="orb"></span>
+      <span>Bubbles</span>
+    </a>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#modes">Modes</a>
+      <a href="about.html">About</a>
+      <a href="privacy.html">Privacy</a>
+    </nav>
   </header>
 
-  <main>
-    <section class="hero">
-      <h2>Pop. Relax. Repeat.</h2>
-      <p>Bubbles is a casual bubble popping game built for quick sessions and calm focus.</p>
-      <a href="https://play.google.com/store/apps/details?id=com.ashwathai.bubbles" class="cta">Get it on Google Play</a>
-    </section>
+  <!-- Hero -->
+  <section class="hero">
+    <div class="floating-bubbles">
+      <div class="floating-bubble"></div>
+      <div class="floating-bubble"></div>
+      <div class="floating-bubble"></div>
+      <div class="floating-bubble"></div>
+      <div class="floating-bubble"></div>
+      <div class="floating-bubble"></div>
+    </div>
+    <div class="hero-content">
+      <div class="orb-large"></div>
+      <p class="subtitle">Pop · Breathe · Repeat</p>
+      <h1><span class="gold-text">Bubbles</span></h1>
+      <p class="tagline">A premium bubble-popping stress buster. Liquid glass UI, gold accents, spring physics, and haptic feedback — designed for quick sessions and calm focus.</p>
+      <a href="https://play.google.com/store/apps/details?id=com.ashwathai.bubbles" class="btn btn-gold">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Get it on Google Play
+      </a>
+    </div>
+  </section>
 
-    <section class="features">
-      <h2>Features</h2>
-      <ul>
-        <li>Fast, simple tap controls</li>
-        <li>Adventure levels with increasing challenge</li>
-        <li>Zen mode for relaxed play</li>
-        <li>Daily Challenge scoring</li>
-        <li>Power-ups: slow motion, freeze, multi-pop, prism boosts</li>
-        <li>Coins, upgrades, skins, themes, and prestige progression</li>
-        <li>Sound, haptics, and reduced-motion settings</li>
-      </ul>
-    </section>
+  <!-- Features -->
+  <section class="section" id="features">
+    <div class="section-inner">
+      <div class="section-header reveal">
+        <span class="label">What's Inside</span>
+        <h2>Premium <span class="gold-text">Features</span></h2>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-card glass reveal reveal-delay-1">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <h3>10 Adventure Levels</h3>
+          <p>Progressive difficulty with boss battles, wind, gravity, and shrinking time limits across 10 handcrafted levels.</p>
+        </div>
+        <div class="feature-card glass reveal reveal-delay-2">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </div>
+          <h3>Zen Mode</h3>
+          <p>Pop bubbles without any time pressure. A calming, infinite session for mindful moments.</p>
+        </div>
+        <div class="feature-card glass reveal reveal-delay-3">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <h3>Daily Challenge</h3>
+          <p>A fresh seeded run every day. Compete against your own best score and earn bonus coins.</p>
+        </div>
+        <div class="feature-card glass reveal reveal-delay-1">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
+          <h3>Power-Ups</h3>
+          <p>Slow Motion, Freeze, Multi-Pop, and Prism Boost — collect and upgrade them all.</p>
+        </div>
+        <div class="feature-card glass reveal reveal-delay-2">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M16 8l-8 8"/><path d="M8 8l8 8"/></svg>
+          </div>
+          <h3>Special Bubbles</h3>
+          <p>Boss bubbles with health bars, bombs to avoid, frozen bubbles to crack, and rainbow prism bubbles.</p>
+        </div>
+        <div class="feature-card glass reveal reveal-delay-3">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          </div>
+          <h3>Skins & Themes</h3>
+          <p>Unlock bubble skins and background themes with coins. Prestige for the exclusive Gold skin.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
-    <section class="links">
-      <h2>Legal</h2>
-      <nav>
-        <a href="privacy.html">Privacy Policy</a>
+  <!-- Game Modes -->
+  <section class="section" id="modes">
+    <div class="section-inner">
+      <div class="section-header reveal">
+        <span class="label">Play Your Way</span>
+        <h2>Three <span class="gold-text">Game Modes</span></h2>
+      </div>
+      <div class="modes-grid">
+        <div class="mode-card glass reveal reveal-delay-1">
+          <div class="mode-label">Adventure</div>
+          <h3>10 Levels of Challenge</h3>
+          <p>Clear every bubble before time runs out. Boss battles, wind, gravity, and speed increase with each level. Can you reach level 10?</p>
+        </div>
+        <div class="mode-card glass reveal reveal-delay-2">
+          <div class="mode-label">Zen</div>
+          <h3>Infinite Calm</h3>
+          <p>No timer. No pressure. Just you and the bubbles. Pop at your own pace for as long as you like.</p>
+        </div>
+        <div class="mode-card glass reveal reveal-delay-3">
+          <div class="mode-label">Daily</div>
+          <h3>Fresh Every Day</h3>
+          <p>The same seeded challenge for everyone, once per day. Earn coins based on your score. How high can you rank?</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <div class="section-inner reveal">
+      <div class="orb-small"></div>
+      <h2>Ready to <span class="gold-text">Pop</span>?</h2>
+      <p style="margin: 0 auto var(--space-xl); max-width: 420px;">Download Bubbles for free. No account needed. Just open and play.</p>
+      <a href="https://play.google.com/store/apps/details?id=com.ashwathai.bubbles" class="btn btn-gold">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Get it on Google Play
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <a href="index.html" class="logo" style="font-size: 1.2rem;">
+        <span class="orb" style="width: 20px; height: 20px;"></span>
+        <span>Bubbles</span>
+      </a>
+      <div class="footer-links">
         <a href="about.html">About</a>
+        <a href="privacy.html">Privacy Policy</a>
         <a href="data-deletion.html">Data Deletion</a>
-      </nav>
-    </section>
-  </main>
-
-  <footer>
-    <p>&copy; 2026 AshwathAI. All rights reserved.</p>
+        <a href="mailto:ashwathai.dev@gmail.com">Contact</a>
+      </div>
+      <p class="footer-copy">&copy; 2026 AshwathAI. All rights reserved.</p>
+    </div>
   </footer>
+
+  <!-- Scroll Reveal Script -->
+  <script>
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+  </script>
+
 </body>
 </html>

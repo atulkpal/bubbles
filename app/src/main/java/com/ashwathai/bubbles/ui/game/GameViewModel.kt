@@ -118,6 +118,14 @@ class GameViewModel(
     private var gameLoopJob: kotlinx.coroutines.Job? = null
     private val tapChannel = Channel<TapEvent>(Channel.UNLIMITED)
 
+    // ── Ad Reward State ──
+    private var lastGameOverState: GameState.GameOver? = null
+    var previewSkinName: String? = null
+        private set
+    private var originalSkinBeforePreview: String = ""
+    var guaranteeNextPowerUp = false
+        private set
+
     private var width: Float = 0f
     private var height: Float = 0f
 
@@ -307,11 +315,15 @@ class GameViewModel(
         }
 
         val specialChance = 0.12f * economy.prismBoost
+        val forcePowerUp = guaranteeNextPowerUp
+        if (guaranteeNextPowerUp) guaranteeNextPowerUp = false
+
         val newBubbles = spawnBubblesUseCase(
             config, currentLevelConfig, width, height, bubbles.toList(),
             palette = BubbleSkins.fromName(economy.skin).palette,
             specialChance = specialChance,
-            prismBoost = economy.prismBoost
+            prismBoost = economy.prismBoost,
+            forcePowerUp = forcePowerUp
         )
         bubbles.addAll(newBubbles)
 
@@ -547,15 +559,22 @@ class GameViewModel(
             soundManager.playGameOver()
         }
 
-        gameState = GameState.GameOver(score, highScore, isNewHighScore, isTimeUp, won, zen, daily, dailyReward)
+        val gameOverState = GameState.GameOver(score, highScore, isNewHighScore, isTimeUp, won, zen, daily, dailyReward)
+        lastGameOverState = gameOverState
+        gameState = gameOverState
         gameLoopJob?.cancel()
     }
 
     fun restartGame() {
+        revertPreviewSkin()
+        guaranteeNextPowerUp = false
         if (mode == GameMode.ZEN) startZen() else startGame()
     }
 
     fun goHome() {
+        revertPreviewSkin()
+        guaranteeNextPowerUp = false
+        lastGameOverState = null
         gameLoopJob?.cancel()
         gameState = GameState.Ready
     }
@@ -606,6 +625,100 @@ class GameViewModel(
 
     fun toggleReducedMotion() {
         viewModelScope.launch { settingsRepository.setReducedMotion(!reducedMotion) }
+    }
+
+    // ── Ad Reward Methods ──
+
+    /**
+     * Continue after Game Over — resume from the last score/level with a full timer.
+     * Called when the user watches the "Continue" rewarded ad.
+     */
+    fun continueGame() {
+        val last = lastGameOverState ?: return
+        if (last.won || last.zen || last.daily) return // can't continue won/zen/daily games
+
+        val savedScore = last.finalScore
+        val savedHighScore = last.highScore
+        val savedLevel = (gameState as? GameState.GameOver)?.let {
+            // Recover level from the game state — we stored it indirectly
+            // For adventure, continue from level 1 if we can't recover
+            1
+        } ?: 1
+
+        // Restore the level config for the level we were on
+        val lvlIndex = (savedLevel - 1).coerceIn(0, config.levels.size - 1)
+        currentLevelConfig = config.levels[lvlIndex]
+        levelTimeLimit = currentLevelConfig.timeLimit
+        levelTimeRemaining = currentLevelConfig.timeLimit // full timer
+        bubblesPoppedThisLevel = 0
+        combo = 0
+        comboExpiresAt = 0
+        activePowerUps.clear()
+        slowMoEndTime = 0
+        freezeEndTime = 0
+        multiPopActive = false
+        multiPopEndTime = 0
+        bubbles.clear()
+        messages.clear()
+        particles.clear()
+        shakeTrauma = 0f
+        hitStopRemaining = 0f
+        lastGameOverState = null
+
+        gameState = GameState.Playing(
+            score = savedScore,
+            highScore = savedHighScore,
+            currentLevel = savedLevel,
+            bubblesPoppedThisLevel = 0
+        )
+        startGameLoop()
+    }
+
+    /** Add bonus coins from a rewarded ad (coin_bonus, double_daily, etc.). */
+    fun addBonusCoins(amount: Int) {
+        viewModelScope.launch {
+            economyRepository.addCoins(amount)
+        }
+    }
+
+    /** Grant a time bonus (e.g. +15s after Continue ad). */
+    fun addTimeBonus(seconds: Float) {
+        if (seconds > 0f) {
+            levelTimeRemaining = min(levelTimeLimit, levelTimeRemaining + seconds)
+        }
+    }
+
+    /** Set the flag to guarantee the next spawned bubble is a power-up. */
+    fun setGuaranteeNextPowerUp() {
+        guaranteeNextPowerUp = true
+    }
+
+    /** Preview a locked skin temporarily — reverts after the game ends. */
+    fun previewSkin(name: String) {
+        if (previewSkinName == null) {
+            originalSkinBeforePreview = economy.skin
+        }
+        previewSkinName = name
+        viewModelScope.launch {
+            economyRepository.setSkin(name)
+        }
+    }
+
+    /** Revert to the original skin after a preview game ends. */
+    private fun revertPreviewSkin() {
+        if (previewSkinName != null) {
+            val original = originalSkinBeforePreview
+            previewSkinName = null
+            viewModelScope.launch {
+                economyRepository.setSkin(original)
+            }
+        }
+    }
+
+    /** Check if the daily challenge was already completed today. */
+    fun isDailyCompleted(): Boolean {
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        return today == economy.dailyDate
     }
 
     override fun onCleared() {

@@ -34,7 +34,8 @@ class SpawnBubblesUseCase {
         palette: List<Color>,
         specialChance: Float = 0.12f,
         prismBoost: Float = 1f,
-        random: Random = Random.Default
+        random: Random = Random.Default,
+        forcePowerUp: Boolean = false
     ): List<Bubble> {
         val needed = levelConfig.maxBubbles - existingBubbles.size
         if (needed <= 0 || width <= 0 || height <= 0) return emptyList()
@@ -46,7 +47,7 @@ class SpawnBubblesUseCase {
         }
 
         repeat(min(needed, 2)) {
-            newBubbles.add(spawnLargeBubble(config, levelConfig, width, height, palette, specialChance, prismBoost, random))
+            newBubbles.add(spawnLargeBubble(config, levelConfig, width, height, palette, specialChance, prismBoost, random, forcePowerUp = forcePowerUp && it == 0))
         }
         return newBubbles
     }
@@ -90,7 +91,8 @@ class SpawnBubblesUseCase {
         palette: List<Color>,
         specialChance: Float,
         prismBoost: Float,
-        random: Random
+        random: Random,
+        forcePowerUp: Boolean = false
     ): Bubble {
         val level = random.nextInt(config.maxBubbleLevel - 1) + 2
         val radius = config.minRadius + (level * config.radiusStep)
@@ -110,7 +112,7 @@ class SpawnBubblesUseCase {
         val dy = targetY - y
         val dist = sqrt(dx * dx + dy * dy)
 
-        val isPowerUp = random.nextFloat() < levelConfig.powerUpChance
+        val isPowerUp = forcePowerUp || random.nextFloat() < levelConfig.powerUpChance
         val powerUpType = if (isPowerUp) PowerUpType.values().random(random) else null
 
         val hue = random.nextFloat()

@@ -10,6 +10,8 @@ kotlin = "2.0.20"
 composeBom = "2024.10.00"
 composeCompiler = "2.0.0"
 levelPlay = "9.5.0"
+unityAdsAdapter = "5.12.0"
+unityAdsSdk = "4.20.0"
 playServicesAppset = "16.0.0"
 playServicesAdsIdentifier = "18.1.0"
 playServicesBasement = "18.1.0"
@@ -38,6 +40,8 @@ androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-te
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 levelplay-sdk = { group = "com.unity3d.ads-mediation", name = "mediation-sdk", version.ref = "levelPlay" }
+unityads-adapter = { group = "com.unity3d.ads-mediation", name = "unityads-adapter", version.ref = "unityAdsAdapter" }
+unity-ads = { group = "com.unity3d.ads", name = "unity-ads", version.ref = "unityAdsSdk" }
 play-services-appset = { group = "com.google.android.gms", name = "play-services-appset", version.ref = "playServicesAppset" }
 play-services-ads-identifier = { group = "com.google.android.gms", name = "play-services-ads-identifier", version.ref = "playServicesAdsIdentifier" }
 play-services-basement = { group = "com.google.android.gms", name = "play-services-basement", version.ref = "playServicesBasement" }

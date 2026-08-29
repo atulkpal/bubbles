@@ -60,6 +60,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
@@ -88,6 +89,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.levelplay.sdk)
+    implementation(libs.unityads.adapter)
+    implementation(libs.unity.ads)
     implementation(libs.play.services.appset)
     implementation(libs.play.services.ads.identifier)
     implementation(libs.play.services.basement)

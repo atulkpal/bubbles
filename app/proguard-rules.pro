@@ -8,14 +8,18 @@
 -keep class kotlinx.serialization.** { *; }
 -keep class com.ashwathai.bubbles.**$$serializer { *; }
 
-# LevelPlay / IronSource
+# LevelPlay / IronSource / Unity Ads
 -keepclassmembers class * implements android.os.Parcelable {
     public static final android.os.Parcelable$Creator *;
 }
 -keep class com.ironsource.** { *; }
 -keep class com.unity3d.ironsource.** { *; }
+-keep class com.unity3d.mediation.** { *; }
+-keep class com.unity3d.ads.** { *; }
 -dontwarn com.ironsource.**
 -dontwarn com.unity3d.ironsource.**
+-dontwarn com.unity3d.mediation.**
+-dontwarn com.unity3d.ads.**
 -keep class androidx.recyclerview.widget.RecyclerView { *; }
 -keep class androidx.recyclerview.widget.RecyclerView$OnScrollListener { *; }
 # Keep mediated network adapters if added later
