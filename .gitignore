@@ -11,4 +11,6 @@
 .cxx
 *.apk
 *.aab
-*.hprofplay-account.json
+*.hprof
+play-account.json
+app.zip
