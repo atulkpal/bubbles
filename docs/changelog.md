@@ -14,6 +14,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 - Website source lives in `website/` directory, deployed via GitHub Actions (not branch-based)
+- Floating bubbles moved from hero-only to full-page across all website pages
+- Floating bubbles use `position: fixed` with radial-gradient edge fade mask
 
 ---
 
@@ -66,6 +68,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Privacy policy page
 - About page
 - Data deletion instructions
+- Floating decorative bubbles across all pages with smooth edge fade-out
 
 ---
 

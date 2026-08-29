@@ -112,7 +112,7 @@ Welcome, Agent! This document is your single source of truth for understanding t
 
 ### Play Store & Web
 17. **Play Store Scripts:** Automated upload, screenshot management, closed testing promotion.
-18. **GitHub Pages Website:** Landing page, privacy policy, about, data deletion — auto-deployed via GitHub Actions workflow (`.github/workflows/deploy-website.yml`). Site live at `https://atulkpal.github.io/bubbles/`.
+18. **GitHub Pages Website:** Landing page, privacy policy, about, data deletion — auto-deployed via GitHub Actions workflow (`.github/workflows/deploy-website.yml`). Site live at `https://atulkpal.github.io/bubbles/`. Floating decorative bubbles across all pages with `position: fixed` and radial-gradient edge fade mask.
 19. **Repository Documentation:** Architecture, setup guide, contributing guidelines, changelog.
 
 ---
