@@ -309,7 +309,6 @@ p {
   text-align: center;
   padding: var(--space-4xl) var(--space-xl);
   position: relative;
-  overflow: hidden;
 }
 
 .hero::before {
@@ -389,12 +388,13 @@ p {
   line-height: 1.7;
 }
 
-/* Floating Bubbles (decorative) */
+/* Floating Bubbles (decorative — full-page, fixed) */
 .floating-bubbles {
-  position: absolute;
+  position: fixed;
   inset: 0;
   pointer-events: none;
   overflow: hidden;
+  z-index: 0;
 }
 
 .floating-bubble {
