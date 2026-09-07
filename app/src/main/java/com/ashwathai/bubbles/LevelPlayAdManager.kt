@@ -129,6 +129,13 @@ object LevelPlayAdManager {
         onAdFailed: (String) -> Unit,
         onUserEarnedReward: () -> Unit
     ) {
+        // Ad-free: grant reward immediately without showing ad
+        if (BillingManager.adsRemoved.value) {
+            onAdLoaded()
+            onUserEarnedReward()
+            return
+        }
+
         // Daily cap check
         checkDailyCap()
 
@@ -284,6 +291,7 @@ object LevelPlayAdManager {
     }
 
     private fun maybeShowForegroundInterstitial() {
+        if (BillingManager.adsRemoved.value) return
         val activity = currentActivity ?: return
         val now = System.currentTimeMillis()
         if (now - lastForegroundInterstitialAt < FOREGROUND_FRESHNESS_MS) return
@@ -308,6 +316,7 @@ object LevelPlayAdManager {
      * Never blocks the reward flow — only fires if the ad is ready.
      */
     fun maybeShowLevelCompleteInterstitial(activity: Activity) {
+        if (BillingManager.adsRemoved.value) return
         if (!AdConfig.interstitialConfigured || !_sdkReady.value) return
         levelCompletionCount++
         if (levelCompletionCount % LEVEL_INTERSTITIAL_EVERY != 0) return

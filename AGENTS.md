@@ -79,7 +79,7 @@ Welcome, Agent! This document is your single source of truth for understanding t
 │   │               ├── LuxuryTokens.kt      # Colors, spacing, radius, glass opacities
 │   │               ├── LuxuryTypography.kt  # Cormorant + Montserrat text styles
 │   │               ├── LuxuryMotion.kt      # Spring presets, duration constants
-│   │               ├── LuxuryIcons.kt       # Vector Path icons (bomb, prism, ice, crown)
+│   │               ├── LuxuryIcons.kt       # Vector Path icons (bomb, prism, ice, crown, magnet, chaos, ghost)
 │   │               ├── LuxuryComponents.kt  # Buttons, toggles, stats, timer ring
 │   │               └── GlassSurface.kt      # Core glass card component
 ```
@@ -124,17 +124,22 @@ Welcome, Agent! This document is your single source of truth for understanding t
 - [x] **Release Signing:** Generate proper release keystore (current `release-key.jks` is a placeholder).
 - [ ] **ProGuard Rules:** Verify R8/obfuscation doesn't break DataStore or Compose.
 - [x] **Ad Integration:** ironSource LevelPlay banner ads are live. Add rewarded + interstitial ads for monetization.
+- [x] **In-App Purchase: Remove Ads** — Google Play Billing 7.1.1 integration, BillingManager singleton, `adsRemoved` persistence, ad gating in LevelPlayAdManager + banner, "Remove Ads" UI in Settings.
 - [x] **Play Store Listing:** Finalize store description, screenshots, and feature graphic.
 
 ### Medium Priority
-- [ ] **Unit Tests:** Cover GameUseCases, repositories, and GameViewModel logic.
+- [x] **Unit Tests:** Cover GameUseCases, repositories, and GameViewModel logic.
 - [ ] **UI Tests:** Critical user flows (start game → pop → level complete → game over).
 - [ ] **Performance Profiling:** Frame drops on low-end devices, memory leaks.
 - [ ] **Accessibility:** Screen reader support, content descriptions, contrast audit.
 - [ ] **Localization:** Hindi + English string resources.
 
 ### Low Priority / Future
-- [ ] **New Bubble Types:** Additional special bubbles with unique mechanics.
+- [x] **New Bubble Types:** Magnet, Ticking Bomb, Chaos, Ghost — 4 new special types with unique mechanics.
+- [x] **Procedural Level Generation:** `generateProceduralLevel()` scales levels 21–100 with wind, gravity, boss frequency, escalating difficulty.
+- [x] **Milestone Rewards:** 25 + (level-1)×10 coins at each level-up, shown on LevelCompleteScreen.
+- [x] **Interstitial Ads Between Levels:** Every 3rd level (1–10), every 2nd (11–20), every level (21+).
+- [x] **Coin-Based Continue:** 50 coins → +15s on Game Over, no ad required.
 - [ ] **Leaderboards:** Global and friend-based score competition.
 - [ ] **Achievements:** Milestone rewards and badges.
 - [ ] **KMP Migration:** Kotlin Multiplatform for iOS support.

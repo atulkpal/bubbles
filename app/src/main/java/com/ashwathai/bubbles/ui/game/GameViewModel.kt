@@ -34,8 +34,10 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 import kotlin.random.Random
 
 private enum class GameMode { ADVENTURE, ZEN, DAILY }
@@ -62,6 +64,7 @@ class GameViewModel(
     private val config = GameConfig()
     private var currentLevelConfig: LevelConfig = config.levels[0]
     private var mode = GameMode.ADVENTURE
+    private var timeSinceLastSpawn = 0f
 
     private val zenLevelConfig = LevelConfig(
         level = 0,
@@ -87,6 +90,8 @@ class GameViewModel(
         private set
     var levelTimeLimit by mutableStateOf(60f)
         private set
+
+
 
     val bubbles = mutableStateListOf<Bubble>()
     val messages = mutableStateListOf<PopMessage>()
@@ -236,6 +241,7 @@ class GameViewModel(
         particles.clear()
         shakeTrauma = 0f
         hitStopRemaining = 0f
+        timeSinceLastSpawn = 0f
 
         levelTimeLimit = levelConfig.timeLimit
         levelTimeRemaining = levelConfig.timeLimit
@@ -318,14 +324,19 @@ class GameViewModel(
         val forcePowerUp = guaranteeNextPowerUp
         if (guaranteeNextPowerUp) guaranteeNextPowerUp = false
 
-        val newBubbles = spawnBubblesUseCase(
-            config, currentLevelConfig, width, height, bubbles.toList(),
-            palette = BubbleSkins.fromName(economy.skin).palette,
-            specialChance = specialChance,
-            prismBoost = economy.prismBoost,
-            forcePowerUp = forcePowerUp
-        )
-        bubbles.addAll(newBubbles)
+        timeSinceLastSpawn += dt
+        if (timeSinceLastSpawn >= currentLevelConfig.spawnInterval && bubbles.size < currentLevelConfig.maxBubbles) {
+            timeSinceLastSpawn = 0f
+            val newBubbles = spawnBubblesUseCase(
+                config, currentLevelConfig, width, height, bubbles.toList(),
+                palette = BubbleSkins.fromName(economy.skin).palette,
+                specialChance = specialChance,
+                prismBoost = economy.prismBoost,
+                forcePowerUp = forcePowerUp,
+                maxBubbles = currentLevelConfig.maxBubbles
+            )
+            bubbles.addAll(newBubbles)
+        }
 
         val updatedBubbles = updateBubblesUseCase(bubbles.toList(), dt, width, height, currentLevelConfig, isFrozen, slowMoFactor)
         bubbles.clear()
@@ -484,6 +495,32 @@ class GameViewModel(
         val score = (gameState as? GameState.Playing)?.score ?: 0
         val highScore = (gameState as? GameState.Playing)?.highScore ?: 0
 
+        // ── Milestone reward coins ──
+        val milestoneCoins = EconomyConfig.milestoneRewardForLevel(currentLevel)
+        viewModelScope.launch {
+            economyRepository.addCoins(milestoneCoins)
+        }
+
+        // ── Level-clear celebration particles ──
+        particles.clear()
+        val burstParticles = (1..24).map { i ->
+            val angle = (i.toFloat() / 24f) * 2 * 3.14159f
+            val speed = 180f + Random.nextFloat() * 220f
+            Particle(
+                id = System.nanoTime() + i.toLong(),
+                x = width / 2f,
+                y = height / 2f,
+                vx = cos(angle) * speed,
+                vy = sin(angle) * speed,
+                radius = 4f + Random.nextFloat() * 4f,
+                color = LuxuryColors.Gold400,
+                alpha = 1f,
+                life = 1f,
+                isRing = false
+            )
+        }
+        particles.addAll(burstParticles)
+
         val nextLevel = currentLevel + 1
         if (nextLevel <= config.levels.size) {
             currentLevelConfig = config.levels[nextLevel - 1]
@@ -497,14 +534,49 @@ class GameViewModel(
     }
 
     fun startNextLevel() {
-        gameState = GameState.Playing(
-            score = (gameState as? GameState.LevelComplete)?.score ?: 0,
-            highScore = (gameState as? GameState.LevelComplete)?.highScore ?: 0,
-            currentLevel = (gameState as? GameState.LevelComplete)?.nextLevel ?: 1,
-            bubblesPoppedThisLevel = 0
-        )
+        val completedLevel = (gameState as? GameState.LevelComplete)?.completedLevel ?: 0
+        val shouldShowAd = EconomyConfig.shouldShowAdBetweenLevels(completedLevel)
+
+        if (shouldShowAd) {
+            // Handled by the caller (MainActivity) — this flag is read in onNext
+            // When ad is shown and rewarded, startNextLevelConfirmed() is called.
+            gameState = GameState.LevelComplete(
+                score = (gameState as? GameState.LevelComplete)?.score ?: 0,
+                highScore = (gameState as? GameState.LevelComplete)?.highScore ?: 0,
+                completedLevel = completedLevel,
+                nextLevel = (gameState as? GameState.LevelComplete)?.nextLevel ?: 1,
+                waitingForAd = true
+            )
+            return
+        }
+
+        startNextLevelConfirmed()
+    }
+
+    /** Called after the interstitial ad is watched (or no ad is needed). */
+    fun startNextLevelConfirmed() {
+        val completedLevel = (gameState as? GameState.LevelComplete)?.completedLevel ?: 0
+        val nextLevel = (gameState as? GameState.LevelComplete)?.nextLevel ?: 1
+        val score = (gameState as? GameState.LevelComplete)?.score ?: 0
+        val highScore = (gameState as? GameState.LevelComplete)?.highScore ?: 0
+
+        currentLevelConfig = config.levels[nextLevel - 1]
+        bubblesPoppedThisLevel = 0
+        combo = 0
+        comboExpiresAt = 0
+        activePowerUps.clear()
+        slowMoEndTime = 0
+        freezeEndTime = 0
+        multiPopActive = false
+        multiPopEndTime = 0
+        bubbles.clear()
+        messages.clear()
+        timeSinceLastSpawn = 0f
+
         levelTimeLimit = currentLevelConfig.timeLimit
         levelTimeRemaining = currentLevelConfig.timeLimit
+
+        gameState = GameState.Playing(score, highScore, nextLevel, bubblesPoppedThisLevel)
         startGameLoop()
     }
 
@@ -686,6 +758,53 @@ class GameViewModel(
         if (seconds > 0f) {
             levelTimeRemaining = min(levelTimeLimit, levelTimeRemaining + seconds)
         }
+    }
+
+    /** Continue after Game Over by spending coins (no ad needed). */
+    fun continueWithCoins() {
+        if (economy.coins < EconomyConfig.CONTINUE_COST) return
+        viewModelScope.launch {
+            economyRepository.spendCoins(EconomyConfig.CONTINUE_COST)
+        }
+        continueGameWithTimeBonus(EconomyConfig.CONTINUE_TIME_BONUS)
+    }
+
+    private fun continueGameWithTimeBonus(timeBonus: Float) {
+        val last = lastGameOverState ?: return
+        if (last.won || last.zen || last.daily) return
+
+        val savedScore = last.finalScore
+        val savedHighScore = last.highScore
+        val savedLevel = (gameState as? GameState.GameOver)?.let {
+            1 // For adventure, continue from level 1 if we can't recover
+        } ?: 1
+
+        val lvlIndex = (savedLevel - 1).coerceIn(0, config.levels.size - 1)
+        currentLevelConfig = config.levels[lvlIndex]
+        levelTimeLimit = currentLevelConfig.timeLimit
+        levelTimeRemaining = currentLevelConfig.timeLimit + timeBonus
+        bubblesPoppedThisLevel = 0
+        combo = 0
+        comboExpiresAt = 0
+        activePowerUps.clear()
+        slowMoEndTime = 0
+        freezeEndTime = 0
+        multiPopActive = false
+        multiPopEndTime = 0
+        bubbles.clear()
+        messages.clear()
+        particles.clear()
+        shakeTrauma = 0f
+        hitStopRemaining = 0f
+        lastGameOverState = null
+
+        gameState = GameState.Playing(
+            score = savedScore,
+            highScore = savedHighScore,
+            currentLevel = savedLevel,
+            bubblesPoppedThisLevel = 0
+        )
+        startGameLoop()
     }
 
     /** Set the flag to guarantee the next spawned bubble is a power-up. */

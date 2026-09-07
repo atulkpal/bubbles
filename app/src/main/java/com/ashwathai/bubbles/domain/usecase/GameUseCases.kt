@@ -22,6 +22,10 @@ private val BOMB_COLOR = Color(0xFF333333)
 private val RAINBOW_COLOR = Color(0xFFFFFFFF)
 private val FROZEN_COLOR = Color(0xFF81D4FA)
 private val BOSS_COLOR = Color(0xFF4A148C)
+private val MAGNET_COLOR = Color(0xFF00BCD4)
+private val TICKING_BOMB_COLOR = Color(0xFFFF5722)
+private val CHAOS_COLOR = Color(0xFF9C27B0)
+private val GHOST_COLOR = Color(0xFFB3E5FC)
 
 class SpawnBubblesUseCase {
 
@@ -35,20 +39,23 @@ class SpawnBubblesUseCase {
         specialChance: Float = 0.12f,
         prismBoost: Float = 1f,
         random: Random = Random.Default,
-        forcePowerUp: Boolean = false
+        forcePowerUp: Boolean = false,
+        maxBubbles: Int = Int.MAX_VALUE
     ): List<Bubble> {
-        val needed = levelConfig.maxBubbles - existingBubbles.size
-        if (needed <= 0 || width <= 0 || height <= 0) return emptyList()
+        // Spawn at most 1 bubble per call — caller controls timing via spawnInterval
+        if (existingBubbles.size >= maxBubbles || width <= 0 || height <= 0) return emptyList()
 
         val newBubbles = mutableListOf<Bubble>()
 
-        if (levelConfig.hasBoss && existingBubbles.none { it.bubbleType == BubbleType.BOSS }) {
+        // Boss spawns first if not already present and we have room
+        if (levelConfig.hasBoss && existingBubbles.none { it.bubbleType == BubbleType.BOSS } && existingBubbles.size < maxBubbles) {
             newBubbles.add(spawnBoss(config, levelConfig, width, height, random))
+            // If boss was spawned and we're at cap, stop here
+            if (existingBubbles.size + newBubbles.size >= maxBubbles) return newBubbles
         }
 
-        repeat(min(needed, 2)) {
-            newBubbles.add(spawnLargeBubble(config, levelConfig, width, height, palette, specialChance, prismBoost, random, forcePowerUp = forcePowerUp && it == 0))
-        }
+        // Spawn one regular bubble
+        newBubbles.add(spawnLargeBubble(config, levelConfig, width, height, palette, specialChance, prismBoost, random, forcePowerUp = forcePowerUp))
         return newBubbles
     }
 
@@ -117,13 +124,26 @@ class SpawnBubblesUseCase {
 
         val hue = random.nextFloat()
 
-        val specialRoll = random.nextFloat()
-        val rainbowLimit = specialChance * (0.6f + 0.4f * min(1f, prismBoost))
+        // Level-based weights: higher levels see more special types
+        val levelWeight = min(1f, (levelConfig.level - 1).toFloat() / 50f) // 0..1 from level 1 to 51+
+        val magnetWeight = 0.18f + levelWeight * 0.12f
+        val tickingWeight = 0.18f + levelWeight * 0.10f
+        val chaosWeight = 0.10f + levelWeight * 0.10f
+        val ghostWeight = 0.06f + levelWeight * 0.08f
+        val bombWeight = 0.12f
+        val frozenWeight = 0.15f
+        val rainbowWeight = 0.20f * (0.6f + 0.4f * min(1f, prismBoost))
+
+        val totalWeight = bombWeight + frozenWeight + rainbowWeight + magnetWeight + tickingWeight + chaosWeight + ghostWeight
+        val roll = random.nextFloat() * totalWeight
         val bubbleType = when {
-            specialRoll < specialChance * 0.35f -> BubbleType.BOMB
-            specialRoll < specialChance * 0.6f -> BubbleType.FROZEN
-            specialRoll < rainbowLimit -> BubbleType.RAINBOW
-            else -> BubbleType.NORMAL
+            roll < bombWeight -> BubbleType.BOMB
+            roll < bombWeight + frozenWeight -> BubbleType.FROZEN
+            roll < bombWeight + frozenWeight + rainbowWeight -> BubbleType.RAINBOW
+            roll < bombWeight + frozenWeight + rainbowWeight + magnetWeight -> BubbleType.MAGNET
+            roll < bombWeight + frozenWeight + rainbowWeight + magnetWeight + tickingWeight -> BubbleType.TICKING_BOMB
+            roll < bombWeight + frozenWeight + rainbowWeight + magnetWeight + tickingWeight + chaosWeight -> BubbleType.CHAOS
+            else -> BubbleType.GHOST
         }
 
         val color = when {
@@ -131,6 +151,10 @@ class SpawnBubblesUseCase {
             bubbleType == BubbleType.BOMB -> BOMB_COLOR
             bubbleType == BubbleType.RAINBOW -> RAINBOW_COLOR
             bubbleType == BubbleType.FROZEN -> FROZEN_COLOR
+            bubbleType == BubbleType.MAGNET -> MAGNET_COLOR
+            bubbleType == BubbleType.TICKING_BOMB -> TICKING_BOMB_COLOR
+            bubbleType == BubbleType.CHAOS -> CHAOS_COLOR
+            bubbleType == BubbleType.GHOST -> GHOST_COLOR
             else -> palette[(hue * palette.size).toInt().mod(palette.size)]
         }
 
@@ -284,6 +308,14 @@ class HandleTapUseCase {
                 val chainable = when {
                     current.bubbleType == BubbleType.BOMB ->
                         sqrt((current.x - other.x) * (current.x - other.x) + (current.y - other.y) * (current.y - other.y)) < BOMB_BLAST_RADIUS
+                    current.bubbleType == BubbleType.MAGNET ->
+                        false // Magnet doesn't chain — only pulls
+                    current.bubbleType == BubbleType.TICKING_BOMB ->
+                        sqrt((current.x - other.x) * (current.x - other.x) + (current.y - other.y) * (current.y - other.y)) < BOMB_BLAST_RADIUS * 1.5f // Larger blast
+                    current.bubbleType == BubbleType.CHAOS ->
+                        overlap // Chaos chains by overlap only
+                    current.bubbleType == BubbleType.GHOST || other.bubbleType == BubbleType.GHOST ->
+                        false // Ghosts don't chain at all
                     current.bubbleType == BubbleType.RAINBOW || other.bubbleType == BubbleType.RAINBOW -> overlap
                     else -> overlap && current.color == other.color
                 }
@@ -291,7 +323,7 @@ class HandleTapUseCase {
             }
         }
 
-        val big = hitBubble.bubbleType == BubbleType.BOMB || hitBubble.level >= 3 || toDestroy.size >= 4
+        val big = hitBubble.bubbleType in setOf(BubbleType.BOMB, BubbleType.TICKING_BOMB) || hitBubble.level >= 3 || toDestroy.size >= 4
         return destroySet(toDestroy, bubbles, config, levelConfig, palette, random, big = big)
     }
 
@@ -374,14 +406,19 @@ class HandleTapUseCase {
             if (b.isPowerUp) {
                 powerUpCollected = b.powerUpType
                 scoreGain += 50
-            } else if (b.bubbleType != BubbleType.BOMB && b.bubbleType != BubbleType.RAINBOW) {
+            } else if (b.bubbleType != BubbleType.BOMB && b.bubbleType != BubbleType.RAINBOW && b.bubbleType != BubbleType.MAGNET && b.bubbleType != BubbleType.TICKING_BOMB && b.bubbleType != BubbleType.CHAOS && b.bubbleType != BubbleType.GHOST) {
                 scoreGain += (b.level + 1) * 10
+            } else if (b.bubbleType in listOf(BubbleType.MAGNET, BubbleType.TICKING_BOMB, BubbleType.CHAOS, BubbleType.GHOST)) {
+                scoreGain += (b.level + 1) * 15 // Special bubbles worth more
             }
 
-            if (b.bubbleType == BubbleType.RAINBOW) {
-                particles.addAll(sparkleParticles(b, config, random))
-            } else {
-                particles.addAll(createParticles(b, config, random))
+            when (b.bubbleType) {
+                BubbleType.RAINBOW -> particles.addAll(sparkleParticles(b, config, random))
+                BubbleType.TICKING_BOMB -> particles.addAll(explosionParticles(b, random))
+                BubbleType.CHAOS -> particles.addAll(sparkleParticles(b, config, random))
+                BubbleType.GHOST -> particles.addAll(ghostParticles(b, random))
+                BubbleType.MAGNET -> particles.addAll(createParticles(b, config, random))
+                else -> particles.addAll(createParticles(b, config, random))
             }
 
             if (b.level > 0 && b.bubbleType == BubbleType.NORMAL && !b.isPowerUp) {
@@ -410,6 +447,41 @@ class HandleTapUseCase {
                     vy = sin(angle + 3.14159f) * speed,
                     level = newLevel
                 ))
+            } else if (b.bubbleType == BubbleType.GHOST && !b.isPowerUp) {
+                // Ghost: spawns 3 smaller ghosts with random directions on pop
+                val childCount = 3
+                repeat(childCount) {
+                    val angle = random.nextFloat() * 2 * 3.14159f
+                    val speed = 100f + random.nextFloat() * 100f
+                    newBubbles.add(Bubble(
+                        id = System.nanoTime() + 100 + it.toLong(),
+                        x = b.x,
+                        y = b.y,
+                        radius = b.radius * 0.5f,
+                        color = b.color.copy(alpha = 0.7f),
+                        vx = cos(angle) * speed,
+                        vy = sin(angle) * speed,
+                        level = b.level,
+                        bubbleType = BubbleType.GHOST,
+                        health = 1
+                    ))
+                }
+            } else if (b.bubbleType == BubbleType.CHAOS && !b.isPowerUp) {
+                // Chaos: sends all bubbles within radius flying outward randomly
+                val chaosRadius = b.radius * 3f
+                for (i in remaining.indices) {
+                    val other = remaining[i]
+                    val dist = kotlin.math.sqrt((b.x - other.x) * (b.x - other.x) + (b.y - other.y) * (b.y - other.y))
+                    if (dist < chaosRadius) {
+                        val angle = random.nextFloat() * 2 * 3.14159f
+                        val speed = 200f + random.nextFloat() * 200f
+                        // Mutate via mutable copy — we'll rebuild remaining at the end
+                        remaining.toMutableList()[i] = other.copy(
+                            vx = cos(angle) * speed,
+                            vy = sin(angle) * speed
+                        )
+                    }
+                }
             }
 
             if (b.bubbleType == BubbleType.BOMB) {
@@ -419,6 +491,62 @@ class HandleTapUseCase {
         }
 
         val messages = mutableListOf<PopMessage>()
+
+        // Special type pop messages
+        toDestroy.forEach { b ->
+            when (b.bubbleType) {
+                BubbleType.TICKING_BOMB -> messages.add(
+                    PopMessage(
+                        id = System.nanoTime() + 10,
+                        text = "TICK! +${scoreGain}",
+                        x = b.x,
+                        y = b.y - b.radius,
+                        rotation = 0f,
+                        scale = 1.1f,
+                        color = TICKING_BOMB_COLOR,
+                        fontSize = 24
+                    )
+                )
+                BubbleType.MAGNET -> messages.add(
+                    PopMessage(
+                        id = System.nanoTime() + 10,
+                        text = "MAGNET!",
+                        x = b.x,
+                        y = b.y - b.radius,
+                        rotation = 0f,
+                        scale = 1.0f,
+                        color = MAGNET_COLOR,
+                        fontSize = 20
+                    )
+                )
+                BubbleType.CHAOS -> messages.add(
+                    PopMessage(
+                        id = System.nanoTime() + 10,
+                        text = "CHAOS!",
+                        x = b.x,
+                        y = b.y - b.radius,
+                        rotation = (random.nextFloat() - 0.5f) * 0.5f,
+                        scale = 1.2f,
+                        color = CHAOS_COLOR,
+                        fontSize = 28
+                    )
+                )
+                BubbleType.GHOST -> messages.add(
+                    PopMessage(
+                        id = System.nanoTime() + 10,
+                        text = "PHANTOM!",
+                        x = b.x,
+                        y = b.y - b.radius,
+                        rotation = 0f,
+                        scale = 1.1f,
+                        color = GHOST_COLOR,
+                        fontSize = 22
+                    )
+                )
+                else -> {}
+            }
+        }
+
         val poppedSize = toDestroy.size
 
         when {
@@ -459,7 +587,7 @@ class HandleTapUseCase {
         }
 
         return TapResult(
-            newBubbles = remaining + newBubbles,
+            newBubbles = remaining.toMutableList() + newBubbles,
             newMessages = messages,
             newParticles = particles,
             scoreGain = scoreGain,
@@ -602,6 +730,39 @@ class HandleTapUseCase {
             color = Color.White,
             alpha = 0.9f,
             life = 0.6f,
+            isRing = true
+        ))
+        return particles
+    }
+
+    private fun ghostParticles(bubble: Bubble, random: Random): List<Particle> {
+        val particles = mutableListOf<Particle>()
+        for (i in 0 until 10) {
+            val angle = random.nextFloat() * 2 * 3.14159f
+            val speed = 80f + random.nextFloat() * 120f
+            particles.add(Particle(
+                id = System.nanoTime() + i.toLong(),
+                x = bubble.x,
+                y = bubble.y,
+                vx = cos(angle) * speed,
+                vy = sin(angle) * speed,
+                radius = 2f + random.nextFloat() * 3f,
+                color = bubble.color.copy(alpha = 0.7f),
+                alpha = 0.8f,
+                life = 0.7f
+            ))
+        }
+        // Ghostly wispy ring
+        particles.add(Particle(
+            id = System.nanoTime() + 999,
+            x = bubble.x,
+            y = bubble.y,
+            vx = 0f,
+            vy = 0f,
+            radius = bubble.radius * 1.2f,
+            color = Color.White.copy(alpha = 0.3f),
+            alpha = 0.6f,
+            life = 0.8f,
             isRing = true
         ))
         return particles

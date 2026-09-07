@@ -17,6 +17,7 @@ class SettingsRepositoryImpl(private val dataStore: DataStore<Preferences>) : Se
     private val SOUND_KEY = booleanPreferencesKey("sound_enabled")
     private val HAPTICS_KEY = booleanPreferencesKey("haptics_enabled")
     private val REDUCED_MOTION_KEY = booleanPreferencesKey("reduced_motion")
+    private val ADS_REMOVED_KEY = booleanPreferencesKey("ads_removed")
 
     private val _soundEnabled = MutableStateFlow(true)
     override val soundEnabled: kotlinx.coroutines.flow.StateFlow<Boolean> = _soundEnabled.asStateFlow()
@@ -26,6 +27,9 @@ class SettingsRepositoryImpl(private val dataStore: DataStore<Preferences>) : Se
 
     private val _reducedMotion = MutableStateFlow(false)
     override val reducedMotion: kotlinx.coroutines.flow.StateFlow<Boolean> = _reducedMotion.asStateFlow()
+
+    private val _adsRemoved = MutableStateFlow(false)
+    override val adsRemoved: kotlinx.coroutines.flow.StateFlow<Boolean> = _adsRemoved.asStateFlow()
 
     init {
         loadSettings()
@@ -38,6 +42,7 @@ class SettingsRepositoryImpl(private val dataStore: DataStore<Preferences>) : Se
                 _soundEnabled.value = prefs[SOUND_KEY] ?: true
                 _hapticsEnabled.value = prefs[HAPTICS_KEY] ?: true
                 _reducedMotion.value = prefs[REDUCED_MOTION_KEY] ?: false
+                _adsRemoved.value = prefs[ADS_REMOVED_KEY] ?: false
             }
         }
     }
@@ -61,5 +66,12 @@ class SettingsRepositoryImpl(private val dataStore: DataStore<Preferences>) : Se
             preferences[REDUCED_MOTION_KEY] = enabled
         }
         _reducedMotion.value = enabled
+    }
+
+    override suspend fun setAdsRemoved(removed: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[ADS_REMOVED_KEY] = removed
+        }
+        _adsRemoved.value = removed
     }
 }

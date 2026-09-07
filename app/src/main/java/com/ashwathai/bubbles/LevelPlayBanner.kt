@@ -39,7 +39,9 @@ import com.unity3d.mediation.banner.LevelPlayBannerAdViewListener
 fun LevelPlayBanner(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val sdkReady by LevelPlayAdManager.sdkReady.collectAsStateWithLifecycle()
+    val adsRemoved by BillingManager.adsRemoved.collectAsStateWithLifecycle()
 
+    if (adsRemoved) return
     if (!AdConfig.bannerConfigured) return
     if (!sdkReady) return
 

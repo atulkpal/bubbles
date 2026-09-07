@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -119,6 +120,8 @@ import com.ashwathai.bubbles.ui.theme.luxury.LuxuryTypography
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
@@ -309,29 +312,50 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
             }
             is GameState.LevelComplete -> {
                 val activity = LocalContext.current as? android.app.Activity
-                LevelCompleteScreen(
-                    theme = theme,
-                    score = gameState.score,
-                    highScore = gameState.highScore,
-                    completedLevel = gameState.completedLevel,
-                    nextLevel = gameState.nextLevel,
-                    onNext = { gameViewModel.startNextLevel() },
-                    onHome = { gameViewModel.goHome() },
-                    onCoinBonus = if (activity != null) {
-                        {
-                            LevelPlayAdManager.loadAndShowRewardedAd(
-                                adType = "coin_bonus",
-                                activity = activity,
-                                onAdLoaded = {},
-                                onAdFailed = {},
-                                onUserEarnedReward = {
-                                    gameViewModel.addBonusCoins(50)
-                                }
-                            )
+                val waitingForAd = (gameState as? GameState.LevelComplete)?.waitingForAd == true
+                val shouldShowInterstitial = waitingForAd && activity != null && LevelPlayAdManager.adsRemaining() > 0
+
+                if (shouldShowInterstitial) {
+                    LevelPlayAdManager.loadAndShowRewardedAd(
+                        adType = "level_interstitial",
+                        activity = activity,
+                        onAdLoaded = {},
+                        onAdFailed = {
+                            // If ad fails, skip the ad and go to next level directly
+                            gameViewModel.startNextLevelConfirmed()
+                        },
+                        onUserEarnedReward = {
+                            gameViewModel.startNextLevelConfirmed()
                         }
-                    } else null,
-                    adsRemaining = LevelPlayAdManager.adsRemaining()
-                )
+                    )
+                } else {
+                    // No ad needed — show the level complete screen
+                    val milestoneCoins = EconomyConfig.milestoneRewardForLevel(gameState.completedLevel)
+                    LevelCompleteScreen(
+                        theme = theme,
+                        score = gameState.score,
+                        highScore = gameState.highScore,
+                        completedLevel = gameState.completedLevel,
+                        nextLevel = gameState.nextLevel,
+                        milestoneCoins = milestoneCoins,
+                        onNext = { gameViewModel.startNextLevel() },
+                        onHome = { gameViewModel.goHome() },
+                        onCoinBonus = if (activity != null && gameState.completedLevel >= 3) {
+                            {
+                                LevelPlayAdManager.loadAndShowRewardedAd(
+                                    adType = "coin_bonus",
+                                    activity = activity,
+                                    onAdLoaded = {},
+                                    onAdFailed = {},
+                                    onUserEarnedReward = {
+                                        gameViewModel.addBonusCoins(50)
+                                    }
+                                )
+                            }
+                        } else null,
+                        adsRemaining = LevelPlayAdManager.adsRemaining()
+                    )
+                }
             }
             is GameState.GameOver -> {
                 val activity = LocalContext.current as? android.app.Activity
@@ -347,6 +371,7 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     dailyReward = gameState.dailyReward,
                     coins = economy.coins,
                     prestigeLevel = economy.prestigeLevel,
+                    canContinueWithCoins = economy.coins >= EconomyConfig.CONTINUE_COST && !gameState.won && !gameState.zen,
                     onRestart = { gameViewModel.restartGame() },
                     onHome = { gameViewModel.goHome() },
                     onPrestige = { gameViewModel.prestige() },
@@ -362,6 +387,11 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                                     gameViewModel.addTimeBonus(15f)
                                 }
                             )
+                        }
+                    } else null,
+                    onContinueWithCoins = if (!gameState.won && !gameState.zen && economy.coins >= EconomyConfig.CONTINUE_COST) {
+                        {
+                            gameViewModel.continueWithCoins()
                         }
                     } else null,
                     onDoubleDaily = if (gameState.daily && gameState.dailyReward > 0 && activity != null) {
@@ -397,12 +427,14 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
 
         if (showSettings) {
             val activity = LocalContext.current as? android.app.Activity
+            val adsRemoved by BillingManager.adsRemoved.collectAsStateWithLifecycle()
             SettingsScreen(
                 theme = theme,
                 economy = economy,
                 soundEnabled = gameViewModel.soundEnabled,
                 hapticsEnabled = gameViewModel.hapticsEnabled,
                 reducedMotion = gameViewModel.reducedMotion,
+                adsRemoved = adsRemoved,
                 onToggleSound = { gameViewModel.toggleSound() },
                 onToggleHaptics = { gameViewModel.toggleHaptics() },
                 onToggleReducedMotion = { gameViewModel.toggleReducedMotion() },
@@ -423,6 +455,9 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                             }
                         )
                     }
+                } else null,
+                onRemoveAds = if (activity != null && !adsRemoved) {
+                    { BillingManager.launchRemoveAdsFlow(activity) }
                 } else null
             )
         }
@@ -606,13 +641,13 @@ fun StartScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(LuxurySpacing.LG))
+            Spacer(modifier = Modifier.height(LuxurySpacing.XL))
             AnimatedVisibility(
                 visible = staggerIndex(7),
                 enter = fadeIn()
             ) {
                 Text(
-                    "Clear every bubble before time runs out across 10 levels.\nBosses, bombs, rainbows and frozen bubbles await.",
+                    "Clear each level before time runs out.\nDifficulty grows with every level — speed, count, wind, gravity.\nCoins from pops & milestones buy power-up upgrades.",
                     style = LuxuryTypography.BodySmall,
                     color = Color.White.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center
@@ -819,18 +854,11 @@ fun GameScreen(
                         color = Color.White.copy(alpha = 0.8f),
                         modifier = Modifier.padding(top = 6.dp)
                     )
-                } else if (bubblesLeft > 0) {
-                    Text(
-                        text = "Bubbles left: $bubblesLeft — clear them all",
-                        style = LuxuryTypography.BodySmall,
-                        color = Color.White.copy(alpha = 0.8f),
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
                 } else {
                     Text(
-                        text = "LEVEL CLEAR!",
+                        text = "Bubbles left: $bubblesLeft",
                         style = LuxuryTypography.BodySmall,
-                        color = theme.accent,
+                        color = if (bubblesLeft <= 0) theme.accent else Color.White.copy(alpha = 0.8f),
                         modifier = Modifier.padding(top = 6.dp)
                     )
                 }
@@ -993,6 +1021,7 @@ fun LevelCompleteScreen(
     highScore: Int,
     completedLevel: Int,
     nextLevel: Int,
+    milestoneCoins: Int = 0,
     onNext: () -> Unit,
     onHome: () -> Unit,
     onCoinBonus: (() -> Unit)? = null,
@@ -1036,6 +1065,29 @@ fun LevelCompleteScreen(
                     style = LuxuryTypography.BodyMedium,
                     color = Color.White.copy(alpha = 0.7f)
                 )
+                if (milestoneCoins > 0) {
+                    Spacer(modifier = Modifier.height(LuxurySpacing.MD))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = LuxuryIcons.Coin,
+                            contentDescription = null,
+                            tint = LuxuryColors.Gold400,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            "+$milestoneCoins COINS",
+                            style = LuxuryTypography.HeadlineSmall,
+                            color = LuxuryColors.Gold400
+                        )
+                    }
+                    Text(
+                        "Milestone reward — spend on upgrades",
+                        style = LuxuryTypography.BodySmall,
+                        color = Color.White.copy(alpha = 0.6f)
+                    )
+                    Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                }
                 Spacer(modifier = Modifier.height(LuxurySpacing.LG))
                 LuxuryButton(
                     text = "NEXT LEVEL $nextLevel",
@@ -1079,10 +1131,12 @@ fun GameOverScreen(
     dailyReward: Int,
     coins: Int,
     prestigeLevel: Int,
+    canContinueWithCoins: Boolean = false,
     onRestart: () -> Unit,
     onHome: () -> Unit,
     onPrestige: () -> Unit,
     onContinue: (() -> Unit)? = null,
+    onContinueWithCoins: (() -> Unit)? = null,
     onDoubleDaily: (() -> Unit)? = null,
     onCoinBonus: (() -> Unit)? = null,
     adsRemaining: Int = 5
@@ -1112,7 +1166,7 @@ fun GameOverScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "All 10 levels cleared.",
+                            "$finalScore levels cleared!",
                             style = LuxuryTypography.BodyMedium,
                             color = Color.White.copy(alpha = 0.7f)
                         )
@@ -1213,6 +1267,16 @@ fun GameOverScreen(
                         icon = Icons.Default.PlayArrow
                     )
                 }
+                if (canContinueWithCoins && onContinueWithCoins != null) {
+                    Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                    LuxuryButton(
+                        text = "CONTINUE · ${EconomyConfig.CONTINUE_COST} COINS",
+                        onClick = onContinueWithCoins,
+                        modifier = Modifier.fillMaxWidth(),
+                        primary = false,
+                        icon = LuxuryIcons.Coin
+                    )
+                }
                 if (daily && dailyReward > 0 && onDoubleDaily != null && adsRemaining > 0) {
                     Spacer(modifier = Modifier.height(LuxurySpacing.SM))
                     LuxuryButton(
@@ -1273,6 +1337,7 @@ fun SettingsScreen(
     soundEnabled: Boolean,
     hapticsEnabled: Boolean,
     reducedMotion: Boolean,
+    adsRemoved: Boolean,
     onToggleSound: () -> Unit,
     onToggleHaptics: () -> Unit,
     onToggleReducedMotion: () -> Unit,
@@ -1281,7 +1346,8 @@ fun SettingsScreen(
     onSelectTheme: (String) -> Unit,
     onPrestige: () -> Unit,
     onClose: () -> Unit,
-    onTrySkin: ((String) -> Unit)? = null
+    onTrySkin: ((String) -> Unit)? = null,
+    onRemoveAds: (() -> Unit)? = null
 ) {
     Box(
         modifier = Modifier
@@ -1363,6 +1429,69 @@ fun SettingsScreen(
                         LuxuryToggle("Sound", soundEnabled, onToggleSound)
                         LuxuryToggle("Haptics", hapticsEnabled, onToggleHaptics)
                         LuxuryToggle("Reduced Motion", reducedMotion, onToggleReducedMotion)
+                    }
+                }
+
+                // ── Remove Ads ──
+                if (!adsRemoved && onRemoveAds != null) {
+                    Spacer(modifier = Modifier.height(LuxurySpacing.MD))
+                    LuxurySectionTitle("Premium", LuxuryIcons.Sparkle)
+                    GlassSurface(
+                        shape = RoundedCornerShape(LuxuryRadius.MD),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                "Remove All Ads",
+                                style = LuxuryTypography.HeadlineSmall,
+                                color = LuxuryColors.Gold400
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "No banners, no interstitials, no rewarded ads. Rewards grant instantly.",
+                                style = LuxuryTypography.BodySmall,
+                                color = Color.White.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                            LuxuryButton(
+                                text = "REMOVE ADS",
+                                onClick = onRemoveAds,
+                                modifier = Modifier.fillMaxWidth(),
+                                icon = LuxuryIcons.Sparkle,
+                                height = 48.dp
+                            )
+                        }
+                    }
+                }
+                if (adsRemoved) {
+                    Spacer(modifier = Modifier.height(LuxurySpacing.MD))
+                    LuxurySectionTitle("Premium", LuxuryIcons.Sparkle)
+                    GlassSurface(
+                        shape = RoundedCornerShape(LuxuryRadius.MD),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = LuxuryColors.Gold400,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Ads removed · Premium",
+                                style = LuxuryTypography.BodyLarge,
+                                color = LuxuryColors.Gold400
+                            )
+                        }
                     }
                 }
 
@@ -1749,7 +1878,6 @@ private fun DrawScope.drawBubble(bubble: Bubble, skin: BubbleSkin) {
 
     val iconColor = if (base.luminance() > 0.55f) LuxuryColors.Ink950 else Color.White
     val iconSize = r * 1.4f
-
     when (bubble.bubbleType) {
         BubbleType.NORMAL -> {
             if (skin.emoji != null) {
@@ -1794,6 +1922,74 @@ private fun DrawScope.drawBubble(bubble: Bubble, skin: BubbleSkin) {
                     center = Offset(startX + i * (pipSize + gap) + pipSize / 2f, pipY)
                 )
             }
+        }
+        BubbleType.MAGNET -> {
+            // Draw magnet symbol: N/S split with a line
+            drawPath(
+                path = Path().apply {
+                    val mr = iconSize * 0.7f
+                    moveTo(center.x - mr, center.y)
+                    lineTo(center.x + mr, center.y)
+                    moveTo(center.x, center.y - mr)
+                    lineTo(center.x, center.y + mr)
+                },
+                color = LuxuryColors.Ink950,
+                style = Stroke(width = 3.dp.toPx())
+            )
+            drawCircle(
+                color = LuxuryColors.Gold400.copy(alpha = 0.5f),
+                radius = iconSize * 0.4f,
+                center = center
+            )
+        }
+        BubbleType.TICKING_BOMB -> {
+            drawBombIcon(center.x, center.y, iconSize, iconColor)
+            // Countdown tick mark
+            drawCircle(
+                color = LuxuryColors.Gold400,
+                radius = iconSize * 0.3f,
+                center = Offset(center.x, center.y - iconSize * 0.1f),
+                style = Stroke(width = 2.5.dp.toPx())
+            )
+        }
+        BubbleType.CHAOS -> {
+            // Chaos symbol: swirling arcs
+            repeat(3) { i ->
+                val rot = i * 2.0f * 3.14159f / 3f
+                val path = Path()
+                val sr = iconSize * 0.5f
+                val cx = center.x + cos(rot) * sr * 0.3f
+                val cy = center.y + sin(rot) * sr * 0.3f
+                path.moveTo(cx - sr * 0.5f, cy)
+                path.arcTo(
+                    Rect(cx - sr * 0.5f, cy - sr * 0.5f, cx + sr * 0.5f, cy + sr * 0.5f),
+                    0f,
+                    270f,
+                    false
+                )
+                drawPath(path, iconColor)
+            }
+        }
+        BubbleType.GHOST -> {
+            // Ghost: wavy outline icon
+            drawPath(
+                path = Path().apply {
+                    val gr = iconSize * 0.4f
+                    moveTo(center.x - gr, center.y + gr * 0.3f)
+                    quadraticBezierTo(
+                        center.x, center.y - gr * 1.2f,
+                        center.x + gr, center.y + gr * 0.3f
+                    )
+                    lineTo(center.x + gr * 0.8f, center.y + gr * 0.8f)
+                    quadraticBezierTo(
+                        center.x, center.y + gr * 1.2f,
+                        center.x - gr * 0.8f, center.y + gr * 0.8f
+                    )
+                    close()
+                },
+                color = iconColor.copy(alpha = 0.8f),
+                style = Stroke(width = 2.5.dp.toPx())
+            )
         }
     }
 

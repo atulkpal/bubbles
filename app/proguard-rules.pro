@@ -28,6 +28,10 @@
 # Datastore
 -keep class androidx.datastore.** { *; }
 
+# Google Play Billing
+-keep class com.android.billingclient.** { *; }
+-dontwarn com.android.billingclient.**
+
 # Compose
 -keep class androidx.compose.** { *; }
 -dontwarn androidx.compose.**
