@@ -27,7 +27,7 @@ Welcome, Agent! This document is your single source of truth for understanding t
 │   └── changelog.md                         # Version history
 ├── .github/workflows/
 │   └── deploy-website.yml               # GitHub Actions: auto-deploy website to Pages
-├── website/                                 # GitHub Pages site source (privacy, about, data deletion)
+├── website/                                 # Website source (privacy, about, data deletion) — live on GitHub Pages
 │   ├── index.html
 │   ├── about.html
 │   ├── privacy.html
@@ -104,15 +104,15 @@ Welcome, Agent! This document is your single source of truth for understanding t
 11. **Gold Accent System:** Consistent gold palette across light/dark themes.
 
 ### Screens
-12. **Start Screen:** Animated breathing logo, glass mode cards, coin pill, staggered entry.
+12. **Start Screen:** Animated breathing logo, glass mode cards, coin pill, staggered entry, "CONTINUE · LEVEL N" + "SELECT LEVEL" expander (cleared levels + next playable).
 13. **Game Screen:** Continuous glass HUD strip (score, timer ring, best, level, coins), luxury combo counter.
 14. **Pause Overlay:** Glass modal with blurred backdrop.
-15. **Level Complete / Game Over:** Gold celebration, elegant serif typography.
-16. **Settings Screen:** Sectioned glass cards, premium toggles, skin/theme selectors.
+15. **Level Complete / Game Over:** Gold celebration, elegant serif typography. Level clear = achievement choreography: spring card entrance, 3-star rating from remaining time (≥50% ★★★, ≥25% ★★, else ★ — `starsForTimeFraction`), score count-up, gold "LEVEL N UNLOCKED" chip.
+16. **Settings Screen:** Sectioned glass cards, premium toggles, skin/theme selectors, About section (version, Ashwath AI credit, website links: About / Privacy / Data Deletion).
 
 ### Play Store & Web
 17. **Play Store Scripts:** Automated upload, screenshot management, closed testing promotion.
-18. **GitHub Pages Website:** Landing page, privacy policy, about, data deletion — auto-deployed via GitHub Actions workflow (`.github/workflows/deploy-website.yml`). Site live at `https://atulkpal.github.io/bubbles/`. Floating decorative bubbles across all pages with `position: fixed` and radial-gradient edge fade mask.
+18. **Website:** Landing page, privacy policy, about, data deletion — source in `website/`, deployed via `.github/workflows/deploy-website.yml` to `https://atulkpal.github.io/bubbles/`. **Note (2026-09-08):** repo visibility was flipped private→public, which unpublished Pages once; it was re-enabled via API (`build_type: workflow`) and redeployed — if the site ever 404s again, re-run that Pages API call + `gh workflow run deploy-website.yml`. Floating decorative bubbles across all pages with `position: fixed` and radial-gradient edge fade mask.
 19. **Repository Documentation:** Architecture, setup guide, contributing guidelines, changelog.
 
 ---
@@ -128,7 +128,7 @@ Welcome, Agent! This document is your single source of truth for understanding t
 - [x] **Play Store Listing:** Finalize store description, screenshots, and feature graphic.
 
 ### Medium Priority
-- [x] **Unit Tests:** Cover GameUseCases, repositories, and GameViewModel logic.
+- [x] **Unit Tests:** Cover GameUseCases, repositories, and GameViewModel logic. (`CheckLevelCompleteUseCaseTest`, `EconomyConfigTest`)
 - [ ] **UI Tests:** Critical user flows (start game → pop → level complete → game over).
 - [ ] **Performance Profiling:** Frame drops on low-end devices, memory leaks.
 - [ ] **Accessibility:** Screen reader support, content descriptions, contrast audit.
@@ -229,7 +229,8 @@ To maintain continuous alignment and prevent code-spec drift, all agents and dev
 
 > **DO NOT USE** — The following implementations were attempted but rejected. Preserved for reference only.
 
-*None yet — this section will be populated as rejected approaches are documented.*
+- **Level completion = board empty (`bubbles.isEmpty()`)** — REJECTED 2026-09-08. Every level starts with an empty board (bubbles spawn on a timer), so the first game-loop frame triggered instant completion, chaining endlessly through levels with no gameplay. Correct rule: level completes only when every assigned bubble (`maxBubbles`) has spawned AND the board is clear.
+- **Spawn gate = board occupancy (`bubbles.size < maxBubbles`)** — REJECTED 2026-09-08. Pairing the new completion rule with a board-occupancy spawn gate makes every level uncompletable: each pop frees a slot, the level refills itself, and the board never empties after the spawn budget is spent (level 3, the first boss level, exposed it). Correct rule: Adventure spawns against the fixed level budget via `CanSpawnBubbleUseCase` (`bubblesSpawnedSoFar < maxBubbles`, board cap still applied); Zen/Daily refill endlessly up to the board cap.
 
 ---
 
@@ -245,3 +246,4 @@ To maintain continuous alignment and prevent code-spec drift, all agents and dev
 | Compose BOM | Managed | `gradle/libs.versions.toml` |
 | Hilt | 2.52 (classpath only, not used — manual DI via AppModule) | `build.gradle.kts` |
 | Ad SDK | ironSource LevelPlay (banners only) | `gradle/libs.versions.toml` |
+| Version | 1.2 (versionCode 3) | `app/build.gradle.kts` + `APP_VERSION` in `MainActivity.kt` |

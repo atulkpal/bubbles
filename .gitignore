@@ -14,3 +14,9 @@
 *.hprof
 play-account.json
 app.zip
+
+# Signing credentials — NEVER commit
+*.jks
+*.keystore
+keystore.properties
+release-key.*

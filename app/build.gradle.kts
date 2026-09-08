@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -13,8 +15,8 @@ android {
         applicationId = "com.ashwathai.bubbles"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -25,10 +27,24 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("release-key.jks")
-            storePassword = "bubbles123"
-            keyAlias = "bubbles"
-            keyPassword = "bubbles123"
+            // Credentials come from local.properties (gitignored) or environment.
+            // NEVER hardcode them here. See docs/setup.md → Signing.
+            val keystoreProperties = Properties().apply {
+                val f = rootProject.file("keystore.properties")
+                if (f.exists()) f.inputStream().use { load(it) }
+            }
+            val sp = keystoreProperties.getProperty("storePassword")
+                ?: System.getenv("BUBBLES_STORE_PASSWORD")
+            val kp = keystoreProperties.getProperty("keyPassword")
+                ?: System.getenv("BUBBLES_KEY_PASSWORD")
+            val alias = keystoreProperties.getProperty("keyAlias")
+                ?: System.getenv("BUBBLES_KEY_ALIAS")
+            val storePath = keystoreProperties.getProperty("storeFile")
+                ?: System.getenv("BUBBLES_STORE_FILE")
+            storeFile = file(storePath ?: "release-key.jks")
+            storePassword = sp
+            keyAlias = alias
+            keyPassword = kp
         }
     }
 

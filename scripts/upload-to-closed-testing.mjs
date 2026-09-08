@@ -127,11 +127,11 @@ const trackBody = {
     {
       versionCodes: [String(uploadData.versionCode)],
       status: "completed",
-      name: "Bubbles v1.1",
+      name: "Bubbles v1.2",
       releaseNotes: [
         {
           language: "en-US",
-          text: "What's New in v1.1:\n\n• Premium Midnight Glass design system — liquid glass UI, gold accents, spring animations\n• Three game modes: Adventure (10 levels), Zen, Daily Challenge\n• Power-ups: Slow Motion, Freeze, Multi-Pop, Prism Boost\n• Boss battles with health bars, bombs, frozen bubbles, rainbow prisms\n• Coins, upgrades, skins, themes, and prestige progression\n• Sound, haptics, and reduced-motion settings\n• Smoother performance and refined bubble physics",
+          text: "What's New in v1.2:\n\n• Star ratings — finish fast to earn ★★★\n• Achievement moment on every level clear\n• Continue & level select — resume or replay any cleared level\n• 100 levels with bosses, wind & gravity\n• About section in Settings\n\nFixes:\n• Level completion is now reliable\n• Ad pacing corrected for levels 11+",
         },
       ],
     },

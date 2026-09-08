@@ -28,7 +28,8 @@ data class Bubble(
     val powerUpType: PowerUpType? = null,
     val bubbleType: BubbleType = BubbleType.NORMAL,
     var health: Int = 1,
-    var cracked: Boolean = false
+    var cracked: Boolean = false,
+    val splitGeneration: Int = 0
 )
 
 data class PopMessage(
@@ -75,6 +76,16 @@ data class LevelConfig(
     val timeLimit: Float = 60f
 )
 
+/**
+ * Stars earned on level clear, from the fraction of the level timer remaining.
+ * Clearing always earns at least one star.
+ */
+fun starsForTimeFraction(timeFraction: Float): Int = when {
+    timeFraction >= 0.5f -> 3
+    timeFraction >= 0.25f -> 2
+    else -> 1
+}
+
 sealed class GameState {
     data class Playing(
         val score: Int,
@@ -101,7 +112,8 @@ sealed class GameState {
         val won: Boolean = false,
         val zen: Boolean = false,
         val daily: Boolean = false,
-        val dailyReward: Int = 0
+        val dailyReward: Int = 0,
+        val currentLevel: Int = 1
     ) : GameState()
 
     data class LevelComplete(
@@ -297,8 +309,9 @@ object EconomyConfig {
     fun shouldShowAdBetweenLevels(completedLevel: Int): Boolean {
         return when {
             completedLevel in 1..10 -> completedLevel % MILESTONE_INTERVAL_1_10 == 0
-            completedLevel in 11..20 -> (completedLevel - 10) % MILESTONE_INTERVAL_11_20 == 1 || completedLevel == 11
-            else -> (completedLevel - 20) % MILESTONE_INTERVAL_21_PLUS == 1 || completedLevel == 21
+            completedLevel in 11..20 -> (completedLevel - 11) % MILESTONE_INTERVAL_11_20 == 0
+            completedLevel >= 21 -> (completedLevel - 21) % MILESTONE_INTERVAL_21_PLUS == 0
+            else -> false
         }
     }
 }
@@ -316,7 +329,8 @@ data class EconomyState(
     val gamesPlayed: Int = 0,
     val prestigeLevel: Int = 0,
     val dailyDate: String = "",
-    val dailyBest: Int = 0
+    val dailyBest: Int = 0,
+    val seenBubbleTypes: Set<String> = emptySet()
 ) {
     val slowMoDurationMs: Long get() = 5000L + (slowMoLevel - 1) * 1500L
     val freezeDurationMs: Long get() = 3000L + (freezeLevel - 1) * 800L

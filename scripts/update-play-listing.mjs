@@ -73,21 +73,26 @@ async function playApi(method, url, accessToken, body) {
 const listing = {
   language,
   title: "Bubbles",
-  shortDescription: "A relaxing bubble popping game with levels, power-ups, coins, and zen mode",
-  fullDescription: `Bubbles is a casual bubble popping game built for quick sessions and calm focus.
+  shortDescription: "A luxurious bubble popping game — 100 levels, star ratings, zen mode",
+  fullDescription: `Bubbles is a premium bubble popping game built for quick sessions and calm focus, wrapped in a luxury "Midnight Glass" design with gold accents and spring animations.
 
-Clear bubbles before the timer runs out, chain combos, avoid bombs, and unlock power-ups as each level gets faster. Adventure mode gives you structured stages, Zen mode lets you pop without pressure, and Daily Challenge gives you a fresh timed run to revisit.
+Clear every bubble before the timer runs out to earn up to three stars, unlock the next level, and build your collection of upgrades, skins, and themes. Continue your adventure from any level you've cleared, or replay favorites from the level select screen.
 
 Features:
-- Fast, simple tap controls
-- Adventure levels with increasing challenge
-- Zen mode for relaxed play
+- 100 Adventure levels — curated stages plus procedurally generated challenges with wind, gravity, and boss battles
+- Star ratings — clear levels with time to spare to earn ★★★
+- Continue & level select — resume at your frontier level or replay any cleared level
+- 7 special bubble types — bomb, frozen, rainbow, magnet, ticking bomb, chaos, and ghost
+- Zen mode for relaxed, endless popping
 - Daily Challenge scoring
 - Power-ups including slow motion, freeze, multi-pop, and prism boosts
 - Coins, upgrades, skins, themes, and prestige progression
 - Sound, haptics, and reduced-motion settings
+- One-time "Remove Ads" purchase
 
-Bubbles is designed for short breaks, focused play, and satisfying bubble pops without complicated menus or long sessions.`,
+Bubbles is designed for short breaks, focused play, and satisfying bubble pops. Every interaction uses spring physics and haptic feedback for a premium feel.
+
+Bubbles is developed by Ashwath AI.`,
   video: "",
 };
 

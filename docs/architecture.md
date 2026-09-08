@@ -19,15 +19,15 @@ Bubbles follows **Clean Architecture** with **MVVM** pattern, separating concern
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| `GameModels` | `domain/model/GameModels.kt` | Data classes: `Bubble`, `GameState`, `GameMode`, etc. |
+| `GameModels` | `domain/model/GameModels.kt` | Data classes: `Bubble`, `GameState`, `LevelConfig`, etc.; `starsForTimeFraction` star rating; `generateProceduralLevel()` (levels 21–100) |
 | `Repositories` | `domain/repository/` | Interfaces: `ScoreRepository`, `EconomyRepository`, `SettingsRepository` |
-| `UseCases` | `domain/usecase/GameUseCases.kt` | Business logic: scoring, coin rewards, skin unlocking |
+| `UseCases` | `domain/usecase/GameUseCases.kt` | Business logic: spawning (`SpawnBubblesUseCase`), spawn gating (`CanSpawnBubbleUseCase`), tap handling, bubble updates, level completion (`CheckLevelCompleteUseCase`) |
 
 ### Data Layer (`data/`)
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| `ScoreRepositoryImpl` | `data/local/ScoreRepositoryImpl.kt` | Persists high scores via DataStore |
+| `ScoreRepositoryImpl` | `data/local/ScoreRepositoryImpl.kt` | Persists high scores, zen best, games played, and highest cleared adventure level via DataStore |
 | `EconomyRepositoryImpl` | `data/local/EconomyRepositoryImpl.kt` | Persists coins, owned skins/themes |
 | `SettingsRepositoryImpl` | `data/local/SettingsRepositoryImpl.kt` | Persists sound, haptics, difficulty preferences |
 | `SoundManager` | `data/sound/SoundManager.kt` | SoundPool-based sound effects |
@@ -94,13 +94,21 @@ Bubbles are rendered with 6 visual layers:
 
 | Mode | Description |
 |------|-------------|
-| **Adventure** | Timed mode with boss bubbles every 10 levels. Score multiplied by level. |
+| **Adventure** | Timed levels 1–100 (curated 1–20, procedural 21–100). Each level has a fixed spawn budget (`maxBubbles`); it completes when every bubble has spawned AND the board is cleared. Boss bubbles on designated levels. Cleared levels unlock the next one (persisted) and can be replayed via level select. |
 | **Zen** | Endless mode, no timer, pure relaxation. |
 | **Daily** | Same puzzle for everyone each day (seed-based). |
 
 ## Economy
 
-- **Coins** earned per pop (scaled by level multiplier)
+- **Coins** earned per pop (scaled by level multiplier) plus milestone rewards at each level-up: `25 + (level-1)×10`
 - **Skins** unlockable at coin thresholds (Common → Rare → Epic → Legendary)
 - **Themes** unlockable at higher thresholds
 - All persisted via DataStore
+
+## Level Completion & Progression
+
+- `CheckLevelCompleteUseCase`: a level completes only when `bubblesSpawnedSoFar >= totalBubblesToSpawn` AND the board is empty. An empty board alone is NOT complete (prevents instant-skip at level start).
+- `CanSpawnBubbleUseCase`: Adventure spawns against the fixed level budget (board occupancy must NOT gate spawning, or levels become uncompletable); Zen/Daily refill endlessly up to the board cap.
+- Unlock tracking: clearing level N persists `highestLevel = N+1` via `ScoreRepository`. Replays of cleared levels never re-trigger unlocks.
+- Star rating: `starsForTimeFraction` — ≥50% time left = ★★★, ≥25% = ★★, else ★.
+- Interstitial ads between levels: every 3rd (1–10), odd (11–19), every (21+); gated by Remove Ads IAP and daily cap.

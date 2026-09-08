@@ -1,11 +1,18 @@
 package com.ashwathai.bubbles
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -14,6 +21,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -99,6 +107,7 @@ import com.ashwathai.bubbles.domain.model.Particle
 import com.ashwathai.bubbles.domain.model.PopMessage
 import com.ashwathai.bubbles.domain.model.PowerUpType
 import com.ashwathai.bubbles.domain.model.ThemePalette
+import com.ashwathai.bubbles.domain.model.starsForTimeFraction
 import com.ashwathai.bubbles.domain.repository.EconomyRepository
 import com.ashwathai.bubbles.domain.repository.ScoreRepository
 import com.ashwathai.bubbles.domain.repository.SettingsRepository
@@ -151,7 +160,8 @@ class MainActivity : ComponentActivity() {
             handleTapUseCase = AppModule.provideHandleTapUseCase(),
             updateMessagesUseCase = AppModule.provideUpdateMessagesUseCase(),
             updateParticlesUseCase = AppModule.provideUpdateParticlesUseCase(),
-            checkLevelCompleteUseCase = AppModule.provideCheckLevelCompleteUseCase()
+            checkLevelCompleteUseCase = AppModule.provideCheckLevelCompleteUseCase(),
+            canSpawnBubbleUseCase = AppModule.provideCanSpawnBubbleUseCase()
         )
     }
 
@@ -174,6 +184,13 @@ class MainActivity : ComponentActivity() {
 
 fun Modifier.themeBackground(theme: ThemePalette): Modifier {
     return background(Brush.verticalGradient(listOf(theme.top, theme.bottom)))
+}
+
+/** App version shown in Settings → About. Keep in sync with app/build.gradle.kts. */
+const val APP_VERSION = "1.2"
+
+fun openUrl(context: android.content.Context, url: String) {
+    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 }
 
 @Composable
@@ -218,8 +235,9 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     coins = economy.coins,
                     dailyBest = economy.dailyBest,
                     playedToday = playedToday,
+                    highestLevel = gameViewModel.highestLevel,
                     reducedMotion = gameViewModel.reducedMotion,
-                    onStart = { gameViewModel.startGame() },
+                    onStartLevel = { level -> gameViewModel.startGame(level) },
                     onZen = { gameViewModel.startZen() },
                     onDaily = { gameViewModel.startDaily() },
                     onSettings = { showSettings = true },
@@ -274,6 +292,9 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     theme = theme,
                     shakeTrauma = shakeTrauma,
                     reducedMotion = gameViewModel.reducedMotion,
+                    tutorialCard = gameViewModel.tutorialCard,
+                    tutorialText = gameViewModel.tutorialCard?.let { gameViewModel.tutorialTextFor(it) },
+                    onDismissTutorial = { gameViewModel.dismissTutorialCard() },
                     onPause = { gameViewModel.pauseGame() },
                     onEndZen = { gameViewModel.endZenSession() }
                 )
@@ -312,22 +333,29 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
             }
             is GameState.LevelComplete -> {
                 val activity = LocalContext.current as? android.app.Activity
-                val waitingForAd = (gameState as? GameState.LevelComplete)?.waitingForAd == true
-                val shouldShowInterstitial = waitingForAd && activity != null && LevelPlayAdManager.adsRemaining() > 0
+                val waitingForAd = gameState.waitingForAd
 
-                if (shouldShowInterstitial) {
-                    LevelPlayAdManager.loadAndShowRewardedAd(
-                        adType = "level_interstitial",
-                        activity = activity,
-                        onAdLoaded = {},
-                        onAdFailed = {
-                            // If ad fails, skip the ad and go to next level directly
-                            gameViewModel.startNextLevelConfirmed()
-                        },
-                        onUserEarnedReward = {
+                if (waitingForAd && activity != null) {
+                    // Side effect must run once per level — not on every recomposition
+                    LaunchedEffect(gameState.completedLevel) {
+                        if (LevelPlayAdManager.adsRemaining() > 0) {
+                            LevelPlayAdManager.loadAndShowRewardedAd(
+                                adType = "level_interstitial",
+                                activity = activity,
+                                onAdLoaded = {},
+                                onAdFailed = {
+                                    // If ad fails, skip the ad and go to next level directly
+                                    gameViewModel.startNextLevelConfirmed()
+                                },
+                                onUserEarnedReward = {
+                                    gameViewModel.startNextLevelConfirmed()
+                                }
+                            )
+                        } else {
+                            // Daily ad cap reached — skip straight to the next level
                             gameViewModel.startNextLevelConfirmed()
                         }
-                    )
+                    }
                 } else {
                     // No ad needed — show the level complete screen
                     val milestoneCoins = EconomyConfig.milestoneRewardForLevel(gameState.completedLevel)
@@ -338,6 +366,9 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                         completedLevel = gameState.completedLevel,
                         nextLevel = gameState.nextLevel,
                         milestoneCoins = milestoneCoins,
+                        stars = starsForTimeFraction(gameViewModel.lastLevelTimeFraction),
+                        unlockedNextLevel = gameViewModel.levelUnlockedThisRun,
+                        reducedMotion = gameViewModel.reducedMotion,
                         onNext = { gameViewModel.startNextLevel() },
                         onHome = { gameViewModel.goHome() },
                         onCoinBonus = if (activity != null && gameState.completedLevel >= 3) {
@@ -371,11 +402,11 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     dailyReward = gameState.dailyReward,
                     coins = economy.coins,
                     prestigeLevel = economy.prestigeLevel,
-                    canContinueWithCoins = economy.coins >= EconomyConfig.CONTINUE_COST && !gameState.won && !gameState.zen,
+                    canContinueWithCoins = economy.coins >= EconomyConfig.CONTINUE_COST && !gameState.won && !gameState.zen && !gameState.daily,
                     onRestart = { gameViewModel.restartGame() },
                     onHome = { gameViewModel.goHome() },
                     onPrestige = { gameViewModel.prestige() },
-                    onContinue = if (!gameState.won && !gameState.zen && activity != null) {
+                    onContinue = if (!gameState.won && !gameState.zen && !gameState.daily && activity != null) {
                         {
                             LevelPlayAdManager.loadAndShowRewardedAd(
                                 adType = "continue",
@@ -389,7 +420,7 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                             )
                         }
                     } else null,
-                    onContinueWithCoins = if (!gameState.won && !gameState.zen && economy.coins >= EconomyConfig.CONTINUE_COST) {
+                    onContinueWithCoins = if (!gameState.won && !gameState.zen && !gameState.daily && economy.coins >= EconomyConfig.CONTINUE_COST) {
                         {
                             gameViewModel.continueWithCoins()
                         }
@@ -475,8 +506,9 @@ fun StartScreen(
     coins: Int,
     dailyBest: Int,
     playedToday: Boolean,
+    highestLevel: Int = 1,
     reducedMotion: Boolean = false,
-    onStart: () -> Unit,
+    onStartLevel: (Int) -> Unit,
     onZen: () -> Unit,
     onDaily: () -> Unit,
     onSettings: () -> Unit,
@@ -485,6 +517,7 @@ fun StartScreen(
     adsRemaining: Int = 5
 ) {
     var step by remember { mutableStateOf(0) }
+    var showLevelSelect by remember { mutableStateOf(false) }
     val staggerDelay = if (reducedMotion) 0L else 120L
 
     LaunchedEffect(Unit) {
@@ -576,11 +609,39 @@ fun StartScreen(
             ) {
                 Column {
                     LuxuryButton(
-                        text = "ADVENTURE",
-                        onClick = onStart,
+                        text = "CONTINUE · LEVEL $highestLevel",
+                        onClick = { onStartLevel(highestLevel) },
                         modifier = Modifier.fillMaxWidth(),
                         icon = Icons.Default.PlayArrow
                     )
+                    Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                    LuxuryButton(
+                        text = if (showLevelSelect) "HIDE LEVELS" else "SELECT LEVEL",
+                        onClick = { showLevelSelect = !showLevelSelect },
+                        modifier = Modifier.fillMaxWidth(),
+                        primary = false,
+                        icon = LuxuryIcons.Layers
+                    )
+                    AnimatedVisibility(visible = showLevelSelect) {
+                        Column {
+                            Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(LuxurySpacing.SM)
+                            ) {
+                                val playableMax = (highestLevel + 1).coerceAtMost(100)
+                                for (n in 1..playableMax) {
+                                    LevelChip(
+                                        level = n,
+                                        isNext = n == highestLevel + 1,
+                                        onClick = { onStartLevel(n) }
+                                    )
+                                }
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(LuxurySpacing.MD))
                     LuxuryButton(
                         text = "ZEN MODE",
@@ -657,6 +718,57 @@ fun StartScreen(
     }
 }
 
+
+@Composable
+private fun LevelChip(
+    level: Int,
+    isNext: Boolean,
+    onClick: () -> Unit
+) {
+    GlassSurface(
+        shape = RoundedCornerShape(LuxuryRadius.SM)
+    ) {
+        Row(
+            modifier = Modifier
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isNext) {
+                Icon(
+                    imageVector = LuxuryIcons.Star,
+                    contentDescription = "Next level",
+                    tint = LuxuryColors.Gold400,
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+            Text(
+                "$level",
+                style = LuxuryTypography.LabelLarge,
+                color = if (isNext) LuxuryColors.Gold400 else Color.White.copy(alpha = 0.85f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun AboutLinkChip(label: String, url: String) {
+    val context = LocalContext.current
+    GlassSurface(shape = RoundedCornerShape(LuxuryRadius.Pill)) {
+        Box(
+            modifier = Modifier
+                .clickable { openUrl(context, url) }
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            Text(
+                label,
+                style = LuxuryTypography.LabelMedium,
+                color = LuxuryColors.Gold300
+            )
+        }
+    }
+}
 
 @Composable
 fun LogoOrb(reducedMotion: Boolean = false) {
@@ -743,6 +855,9 @@ fun GameScreen(
     theme: ThemePalette,
     shakeTrauma: Float,
     reducedMotion: Boolean,
+    tutorialCard: BubbleType? = null,
+    tutorialText: String? = null,
+    onDismissTutorial: () -> Unit = {},
     onPause: () -> Unit,
     onEndZen: () -> Unit,
     isPaused: Boolean = false
@@ -898,6 +1013,82 @@ fun GameScreen(
                     .background(Color.Black.copy(alpha = 0.35f))
             )
         }
+
+        if (tutorialCard != null && tutorialText != null) {
+            BubbleTutorialCard(
+                type = tutorialCard,
+                text = tutorialText,
+                reducedMotion = reducedMotion,
+                onDismiss = onDismissTutorial
+            )
+        }
+    }
+}
+
+/**
+ * First-burst tutorial card — full-pause modal teaching a newly unlocked
+ * bubble type. GlassSurface + luxury typography; tap to dismiss, auto-dismiss
+ * after 3s. Respects reduced motion (no spring bounce).
+ */
+@Composable
+fun BubbleTutorialCard(
+    type: BubbleType,
+    text: String,
+    reducedMotion: Boolean,
+    onDismiss: () -> Unit
+) {
+    LaunchedEffect(type) {
+        kotlinx.coroutines.delay(3000)
+        onDismiss()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.45f))
+            .clickable { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        GlassSurface(
+            shape = RoundedCornerShape(LuxuryRadius.LG),
+            modifier = Modifier
+                .padding(horizontal = 40.dp)
+                .then(if (reducedMotion) Modifier else Modifier.graphicsLayer {
+                    scaleX = 0.92f
+                    scaleY = 0.92f
+                })
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = 22.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "NEW BUBBLE",
+                    style = LuxuryTypography.LabelMedium,
+                    color = LuxuryColors.Gold300
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    type.name.replace('_', ' '),
+                    style = LuxuryTypography.DisplaySmall,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text,
+                    style = LuxuryTypography.BodyMedium,
+                    color = Color.White.copy(alpha = 0.8f),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                Text(
+                    "TAP TO CONTINUE",
+                    style = LuxuryTypography.LabelSmall,
+                    color = LuxuryColors.Gold400
+                )
+            }
+        }
     }
 }
 
@@ -964,11 +1155,13 @@ fun PauseOverlay(onResume: () -> Unit, onRestart: () -> Unit, onHome: () -> Unit
             .background(Color.Black.copy(alpha = 0.55f)),
         contentAlignment = Alignment.Center
     ) {
-        GlassSurface(shape = RoundedCornerShape(LuxuryRadius.XL),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(32.dp)
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            GlassSurface(shape = RoundedCornerShape(LuxuryRadius.XL),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .padding(32.dp)
+            ) {
             Column(
                 modifier = Modifier.padding(28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -1012,7 +1205,7 @@ fun PauseOverlay(onResume: () -> Unit, onRestart: () -> Unit, onHome: () -> Unit
         }
     }
 }
-
+}
 
 @Composable
 fun LevelCompleteScreen(
@@ -1022,21 +1215,53 @@ fun LevelCompleteScreen(
     completedLevel: Int,
     nextLevel: Int,
     milestoneCoins: Int = 0,
+    stars: Int = 1,
+    unlockedNextLevel: Boolean = false,
+    reducedMotion: Boolean = false,
     onNext: () -> Unit,
     onHome: () -> Unit,
     onCoinBonus: (() -> Unit)? = null,
     adsRemaining: Int = 5
 ) {
+    // ── Achievement choreography ──
+    // Card springs in with a gentle overshoot, stars pop in sequentially,
+    // the score counts up, and the unlock chip lands last.
+    val cardEntrance = remember { Animatable(if (reducedMotion) 1f else 0f) }
+    LaunchedEffect(Unit) {
+        if (!reducedMotion) {
+            cardEntrance.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            )
+        }
+    }
+    var starsRevealed by remember { mutableStateOf(reducedMotion) }
+    LaunchedEffect(Unit) {
+        if (!reducedMotion) {
+            kotlinx.coroutines.delay(250)
+            starsRevealed = true
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.6f)),
         contentAlignment = Alignment.Center
     ) {
-        GlassSurface(shape = RoundedCornerShape(LuxuryRadius.XL),
+        GlassSurface(
+            shape = RoundedCornerShape(LuxuryRadius.XL),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(28.dp)
+                .graphicsLayer {
+                    scaleX = cardEntrance.value
+                    scaleY = cardEntrance.value
+                    alpha = cardEntrance.value.coerceIn(0f, 1f)
+                }
         ) {
             Column(
                 modifier = Modifier.padding(28.dp),
@@ -1054,9 +1279,45 @@ fun LevelCompleteScreen(
                     color = Color.White,
                     textAlign = TextAlign.Center
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+
+                // ── Star rating: earned stars pop in one by one ──
+                Spacer(modifier = Modifier.height(LuxurySpacing.MD))
+                Row(horizontalArrangement = Arrangement.spacedBy(LuxurySpacing.SM)) {
+                    repeat(3) { index ->
+                        val earned = index < stars
+                        val starScale by animateFloatAsState(
+                            targetValue = if (starsRevealed && earned) 1f else 0.3f,
+                            animationSpec = if (reducedMotion) snap() else keyframes {
+                                durationMillis = 450
+                                1.45f at 220
+                                1f at 450
+                            },
+                            label = "star$index"
+                        )
+                        Icon(
+                            imageVector = LuxuryIcons.Star,
+                            contentDescription = if (earned) "Star earned" else "Star not earned",
+                            tint = if (earned) LuxuryColors.Gold400 else Color.White.copy(alpha = 0.15f),
+                            modifier = Modifier
+                                .size(40.dp)
+                                .graphicsLayer {
+                                    scaleX = starScale
+                                    scaleY = starScale
+                                }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(LuxurySpacing.MD))
+
+                // ── Score counts up from 0 ──
+                val displayedScore by animateIntAsState(
+                    targetValue = score,
+                    animationSpec = if (reducedMotion) snap() else tween(900, easing = LuxuryMotion.EaseOut),
+                    label = "scoreCountUp"
+                )
                 Text(
-                    "+$score",
+                    "+$displayedScore",
                     style = LuxuryTypography.HeadlineLarge,
                     color = LuxuryColors.Gold400
                 )
@@ -1088,6 +1349,31 @@ fun LevelCompleteScreen(
                     )
                     Spacer(modifier = Modifier.height(LuxurySpacing.SM))
                 }
+
+                // ── New level unlocked chip ──
+                if (unlockedNextLevel) {
+                    Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                    GlassSurface(shape = RoundedCornerShape(LuxuryRadius.Pill)) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = LuxuryIcons.Star,
+                                contentDescription = null,
+                                tint = LuxuryColors.Gold400,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "LEVEL $nextLevel UNLOCKED",
+                                style = LuxuryTypography.LabelMedium,
+                                color = LuxuryColors.Gold300
+                            )
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(LuxurySpacing.LG))
                 LuxuryButton(
                     text = "NEXT LEVEL $nextLevel",
@@ -1257,7 +1543,7 @@ fun GameOverScreen(
                 )
                 Spacer(modifier = Modifier.height(LuxurySpacing.SM))
                 // ── Rewarded Ad Buttons ──
-                if (!zen && !won && onContinue != null && adsRemaining > 0) {
+                if (!zen && !won && !daily && onContinue != null && adsRemaining > 0) {
                     Spacer(modifier = Modifier.height(LuxurySpacing.SM))
                     LuxuryButton(
                         text = "CONTINUE · WATCH AD",
@@ -1322,9 +1608,10 @@ fun GameOverScreen(
                         onClick = onPrestige,
                         modifier = Modifier.fillMaxWidth(),
                         primary = false,
-                        icon = LuxuryIcons.Sparkle
+                        icon = LuxuryIcons.Crown
                     )
                 }
+                Spacer(modifier = Modifier.height(LuxurySpacing.SM))
             }
         }
     }
@@ -1600,6 +1887,49 @@ fun SettingsScreen(
                         icon = LuxuryIcons.Sparkle,
                         height = 48.dp
                     )
+                }
+
+                Spacer(modifier = Modifier.height(LuxurySpacing.MD))
+                LuxurySectionTitle("About", LuxuryIcons.Lotus)
+                GlassSurface(
+                    shape = RoundedCornerShape(LuxuryRadius.MD),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            "Bubbles",
+                            style = LuxuryTypography.HeadlineSmall,
+                            color = Color.White
+                        )
+                        Text(
+                            "v$APP_VERSION",
+                            style = LuxuryTypography.LabelMedium,
+                            color = LuxuryColors.Gold300
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "A premium bubble-popping stress buster — pop, breathe, repeat.",
+                            style = LuxuryTypography.BodySmall,
+                            color = Color.White.copy(alpha = 0.7f),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                        Text(
+                            "© 2026 Ashwath AI. All rights reserved.",
+                            style = LuxuryTypography.LabelSmall,
+                            color = Color.White.copy(alpha = 0.55f),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(LuxurySpacing.SM))
+                        Row(horizontalArrangement = Arrangement.spacedBy(LuxurySpacing.SM)) {
+                            AboutLinkChip("ABOUT", "https://atulkpal.github.io/bubbles/about.html")
+                            AboutLinkChip("PRIVACY", "https://atulkpal.github.io/bubbles/privacy.html")
+                            AboutLinkChip("DELETE DATA", "https://atulkpal.github.io/bubbles/data-deletion.html")
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(LuxurySpacing.MD))
@@ -1976,12 +2306,12 @@ private fun DrawScope.drawBubble(bubble: Bubble, skin: BubbleSkin) {
                 path = Path().apply {
                     val gr = iconSize * 0.4f
                     moveTo(center.x - gr, center.y + gr * 0.3f)
-                    quadraticBezierTo(
+                    quadraticTo(
                         center.x, center.y - gr * 1.2f,
                         center.x + gr, center.y + gr * 0.3f
                     )
                     lineTo(center.x + gr * 0.8f, center.y + gr * 0.8f)
-                    quadraticBezierTo(
+                    quadraticTo(
                         center.x, center.y + gr * 1.2f,
                         center.x - gr * 0.8f, center.y + gr * 0.8f
                     )

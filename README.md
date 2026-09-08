@@ -9,8 +9,11 @@ Bubbles is an Android game where players pop bubbles to relieve stress. It featu
 ## Features
 
 - **Three Game Modes**: Adventure (timed progression), Zen (endless relaxation), Daily Challenge
+- **100-Level Adventure**: Fixed spawn budget per level, boss bubbles, wind & gravity; Continue + level select from any cleared level; star ratings on clear
+- **Special Bubble Types**: Bomb, Frozen, Rainbow, Magnet, Ticking Bomb, Chaos, Ghost — each teaches itself on first appearance
 - **Luxury Design**: Liquid glass UI, gold accents, spring animations, haptic feedback
-- **Economy System**: Earn coins, unlock skins and themes
+- **Economy System**: Earn coins, unlock skins and themes, upgrade power-ups
+- **Remove Ads IAP**: One-time purchase disabling all ads (banner, interstitial, rewarded)
 - **Glass Bubble Rendering**: Multi-layer glass effects with refraction, specular highlights, and vector icons
 - **Responsive Motion**: Spring physics on all interactions with reduced-motion support
 - **Premium Typography**: Cormorant (display) + Montserrat (body) font pairing
@@ -48,13 +51,13 @@ cd bubbles
 ```
 bubbles/
 ├── app/src/main/java/com/ashwathai/bubbles/
-│   ├── BubblesApplication.kt      # Application entry (Hilt)
+│   ├── BubblesApplication.kt      # Application entry (LevelPlay SDK init)
 │   ├── MainActivity.kt            # Single activity host
 │   ├── data/
 │   │   ├── local/                  # DataStore repository implementations
 │   │   └── sound/                  # SoundManager (SoundPool)
 │   ├── di/
-│   │   └── AppModule.kt            # Hilt dependency injection
+│   │   └── AppModule.kt            # Manual dependency injection (factory pattern)
 │   ├── domain/
 │   │   ├── model/                  # GameModels (data classes)
 │   │   ├── repository/             # Repository interfaces

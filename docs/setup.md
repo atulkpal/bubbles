@@ -52,26 +52,30 @@ SDK Tools tab:
 
 ### 5. Configure Signing (Optional — for Release Builds)
 
-The project includes a debug signing config. For release builds:
+Signing credentials are **never committed**. They load from `keystore.properties`
+(repo root, gitignored) or environment variables. For release builds:
 
-1. Generate a keystore:
+1. Generate a keystore (stored **outside** the repo if possible):
    ```bash
    keytool -genkey -v -keystore release-key.jks \
      -keyalg RSA -keysize 2048 -validity 10000 \
      -alias bubbles
    ```
 
-2. Place `release-key.jks` in the `app/` directory
-
-3. Update passwords in `app/build.gradle.kts`:
-   ```kotlin
-   signingConfigs {
-       create("release") {
-           storePassword = "YOUR_PASSWORD"
-           keyPassword = "YOUR_PASSWORD"
-       }
-   }
+2. Create `keystore.properties` in the repo root:
+   ```properties
+   storeFile=release-key.jks
+   storePassword=YOUR_PASSWORD
+   keyAlias=bubbles
+   keyPassword=YOUR_PASSWORD
    ```
+
+3. `app/build.gradle.kts` reads this automatically (env-var fallback:
+   `BUBBLES_STORE_FILE`, `BUBBLES_STORE_PASSWORD`, `BUBBLES_KEY_ALIAS`,
+   `BUBBLES_KEY_PASSWORD`).
+
+> **Never commit `*.jks`, `*.keystore`, or `keystore.properties`** — they are
+> gitignored, but verify with `git check-ignore` before your first push.
 
 ### 6. Build and Run
 

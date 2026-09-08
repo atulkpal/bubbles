@@ -12,6 +12,7 @@ import com.ashwathai.bubbles.domain.repository.EconomyRepository
 import com.ashwathai.bubbles.domain.repository.ScoreRepository
 import com.ashwathai.bubbles.domain.repository.SettingsRepository
 import com.ashwathai.bubbles.domain.usecase.ActivatePowerUpUseCase
+import com.ashwathai.bubbles.domain.usecase.CanSpawnBubbleUseCase
 import com.ashwathai.bubbles.domain.usecase.CheckLevelCompleteUseCase
 import com.ashwathai.bubbles.domain.usecase.CheckPowerUpExpirationUseCase
 import com.ashwathai.bubbles.domain.usecase.HandleTapUseCase
@@ -68,6 +69,10 @@ object AppModule {
 
     fun provideCheckLevelCompleteUseCase(): CheckLevelCompleteUseCase {
         return CheckLevelCompleteUseCase()
+    }
+
+    fun provideCanSpawnBubbleUseCase(): CanSpawnBubbleUseCase {
+        return CanSpawnBubbleUseCase()
     }
 
     fun provideActivatePowerUpUseCase(): ActivatePowerUpUseCase {

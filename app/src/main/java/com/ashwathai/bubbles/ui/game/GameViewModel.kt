@@ -10,6 +10,7 @@ import com.ashwathai.bubbles.data.sound.SoundManager
 import com.ashwathai.bubbles.domain.model.Bubble
 import com.ashwathai.bubbles.domain.model.BubbleSkins
 import com.ashwathai.bubbles.domain.model.BubbleThemes
+import com.ashwathai.bubbles.domain.model.BubbleType
 import com.ashwathai.bubbles.domain.model.EconomyConfig
 import com.ashwathai.bubbles.domain.model.EconomyState
 import com.ashwathai.bubbles.domain.model.GameConfig
@@ -21,6 +22,7 @@ import com.ashwathai.bubbles.domain.model.PowerUpType
 import com.ashwathai.bubbles.domain.repository.EconomyRepository
 import com.ashwathai.bubbles.domain.repository.ScoreRepository
 import com.ashwathai.bubbles.domain.repository.SettingsRepository
+import com.ashwathai.bubbles.domain.usecase.CanSpawnBubbleUseCase
 import com.ashwathai.bubbles.domain.usecase.CheckLevelCompleteUseCase
 import com.ashwathai.bubbles.domain.usecase.HandleTapUseCase
 import com.ashwathai.bubbles.domain.usecase.SpawnBubblesUseCase
@@ -58,7 +60,8 @@ class GameViewModel(
     private val handleTapUseCase: HandleTapUseCase,
     private val updateMessagesUseCase: UpdateMessagesUseCase,
     private val updateParticlesUseCase: UpdateParticlesUseCase,
-    private val checkLevelCompleteUseCase: CheckLevelCompleteUseCase
+    private val checkLevelCompleteUseCase: CheckLevelCompleteUseCase,
+    private val canSpawnBubbleUseCase: CanSpawnBubbleUseCase = CanSpawnBubbleUseCase()
 ) : ViewModel() {
 
     private val config = GameConfig()
@@ -105,6 +108,12 @@ class GameViewModel(
     var hitStopRemaining by mutableStateOf(0f)
         private set
 
+    /** Tutorial card currently shown (first-ever burst of a special type). Null = none. */
+    var tutorialCard by mutableStateOf<BubbleType?>(null)
+        private set
+    /** Types whose first-appearance label has already been shown this session. */
+    private val labelShownThisSession = mutableSetOf<BubbleType>()
+
     var economy by mutableStateOf(EconomyState())
         private set
     var soundEnabled by mutableStateOf(true)
@@ -114,12 +123,25 @@ class GameViewModel(
     var reducedMotion by mutableStateOf(false)
         private set
 
+    /** True on the LevelComplete screen when a NEW level was just unlocked (gold chip). */
+    var levelUnlockedThisRun by mutableStateOf(false)
+        private set
+
+    /** Fraction of the level timer remaining when the last level was cleared (drives star rating). */
+    var lastLevelTimeFraction by mutableStateOf(1f)
+        private set
+
+    /** Highest adventure level cleared (persisted). Drives Continue + level select. */
+    var highestLevel by mutableStateOf(1)
+        private set
+
     private var slowMoEndTime: Long = 0
     private var freezeEndTime: Long = 0
     private var multiPopEndTime: Long = 0
     private var multiPopActive = false
     private var comboExpiresAt = 0L
     private var bubblesPoppedThisLevel = 0
+    private var bubblesSpawnedThisLevel = 0
     private var gameLoopJob: kotlinx.coroutines.Job? = null
     private val tapChannel = Channel<TapEvent>(Channel.UNLIMITED)
 
@@ -136,8 +158,15 @@ class GameViewModel(
 
     init {
         observeHighScore()
+        observeHighestLevel()
         observeEconomy()
         observeSettings()
+    }
+
+    private fun observeHighestLevel() {
+        viewModelScope.launch {
+            scoreRepository.highestLevel.collect { highestLevel = it }
+        }
     }
 
     private fun observeHighScore() {
@@ -191,11 +220,16 @@ class GameViewModel(
         tapChannel.trySend(TapEvent(offset.x, offset.y, System.currentTimeMillis()))
     }
 
-    fun startGame() {
+    /**
+     * Start an Adventure session. [level] defaults to 1; passing any previously
+     * cleared level (from the level-select UI) replays it from a clean slate.
+     */
+    fun startGame(level: Int = 1) {
         mode = GameMode.ADVENTURE
+        val requestedLevel = level.coerceIn(1, config.levels.size)
         beginSession(
-            levelConfig = config.levels[0],
-            level = 1,
+            levelConfig = config.levels[requestedLevel - 1],
+            level = requestedLevel,
             highScore = scoreRepository.highScore.value
         )
     }
@@ -229,6 +263,7 @@ class GameViewModel(
     ) {
         currentLevelConfig = levelConfig
         bubblesPoppedThisLevel = 0
+        bubblesSpawnedThisLevel = 0
         combo = 0
         comboExpiresAt = 0
         activePowerUps.clear()
@@ -293,6 +328,9 @@ class GameViewModel(
     }
 
     private fun updateGame(dt: Float) {
+        // Tutorial card pauses the whole game (timer + bubbles) until dismissed
+        if (tutorialCard != null) return
+
         shakeTrauma = max(0f, shakeTrauma - 2.2f * dt)
 
         if (hitStopRemaining > 0f) {
@@ -325,7 +363,16 @@ class GameViewModel(
         if (guaranteeNextPowerUp) guaranteeNextPowerUp = false
 
         timeSinceLastSpawn += dt
-        if (timeSinceLastSpawn >= currentLevelConfig.spawnInterval && bubbles.size < currentLevelConfig.maxBubbles) {
+        val isEndlessMode = mode != GameMode.ADVENTURE
+        if (
+            timeSinceLastSpawn >= currentLevelConfig.spawnInterval &&
+            canSpawnBubbleUseCase(
+                bubblesOnBoard = bubbles.size,
+                maxBubbles = currentLevelConfig.maxBubbles,
+                bubblesSpawnedSoFar = bubblesSpawnedThisLevel,
+                isEndlessMode = isEndlessMode
+            )
+        ) {
             timeSinceLastSpawn = 0f
             val newBubbles = spawnBubblesUseCase(
                 config, currentLevelConfig, width, height, bubbles.toList(),
@@ -336,6 +383,8 @@ class GameViewModel(
                 maxBubbles = currentLevelConfig.maxBubbles
             )
             bubbles.addAll(newBubbles)
+            bubblesSpawnedThisLevel += newBubbles.size
+            maybeShowFirstAppearanceLabel(newBubbles)
         }
 
         val updatedBubbles = updateBubblesUseCase(bubbles.toList(), dt, width, height, currentLevelConfig, isFrozen, slowMoFactor)
@@ -359,7 +408,14 @@ class GameViewModel(
 
         checkPowerUpExpiration()
 
-        if (mode == GameMode.ADVENTURE && checkLevelCompleteUseCase(bubbles.toList())) {
+        if (
+            mode == GameMode.ADVENTURE &&
+            checkLevelCompleteUseCase(
+                bubbles.toList(),
+                totalBubblesToSpawn = currentLevelConfig.maxBubbles,
+                bubblesSpawnedSoFar = bubblesSpawnedThisLevel
+            )
+        ) {
             completeLevel()
         }
     }
@@ -386,6 +442,74 @@ class GameViewModel(
         }
 
         bubblesPoppedThisLevel += result.bubblesPopped
+        maybeShowTutorialCard(result.newBubbles, result.newMessages)
+    }
+
+    /**
+     * First time a special type ever spawns for this player, attach a small
+     * "NEW — TYPE" label message near the bubble (non-blocking).
+     */
+    private fun maybeShowFirstAppearanceLabel(newBubbles: List<Bubble>) {
+        if (mode == GameMode.ZEN) return
+        for (bubble in newBubbles) {
+            val type = bubble.bubbleType
+            if (type == BubbleType.NORMAL || type == BubbleType.BOSS) continue
+            if (type.name in economy.seenBubbleTypes || type in labelShownThisSession) continue
+            labelShownThisSession.add(type)
+            messages.add(
+                PopMessage(
+                    id = System.nanoTime() + 21,
+                    text = "NEW — ${type.name.replace('_', ' ')}",
+                    x = bubble.x.coerceIn(60f, (width - 60f).coerceAtLeast(60f)),
+                    y = (bubble.y - bubble.radius - 20f).coerceAtLeast(80f),
+                    rotation = 0f,
+                    scale = 0.9f,
+                    color = LuxuryColors.Gold300,
+                    fontSize = 18
+                )
+            )
+        }
+    }
+
+    /**
+     * First time a special type is ever burst, show a pausing tutorial card.
+     * Triggered from the pop messages produced by HandleTapUseCase.
+     */
+    private fun maybeShowTutorialCard(remainingBubbles: List<Bubble>, newMessages: List<PopMessage>) {
+        if (tutorialCard != null) return
+        val burstTypes = newMessages.mapNotNull { msg ->
+            when {
+                msg.text.startsWith("TICK!") -> BubbleType.TICKING_BOMB
+                msg.text.startsWith("MAGNET") -> BubbleType.MAGNET
+                msg.text.startsWith("CHAOS") -> BubbleType.CHAOS
+                msg.text.startsWith("PHANTOM") -> BubbleType.GHOST
+                else -> null
+            }
+        }
+        for (type in burstTypes) {
+            if (type.name in economy.seenBubbleTypes) continue
+            tutorialCard = type
+            hitStopRemaining = 0f // paused via tutorialCard check, not hit-stop
+            viewModelScope.launch { economyRepository.markBubbleTypeSeen(type.name) }
+            break
+        }
+    }
+
+    /** Dismiss the tutorial card (tap or auto-timeout). */
+    fun dismissTutorialCard() {
+        tutorialCard = null
+    }
+
+    /** One-line mechanic description for a special bubble type. */
+    fun tutorialTextFor(type: BubbleType): String = when (type) {
+        BubbleType.BOMB -> "Blasts every bubble nearby — chain it for big points!"
+        BubbleType.FROZEN -> "Takes two taps — first crack, then pop."
+        BubbleType.RAINBOW -> "Chains with ANY color it touches."
+        BubbleType.MAGNET -> "Pulls nearby bubbles toward it. Doesn't chain."
+        BubbleType.TICKING_BOMB -> "Explodes on its own in 1.5s — pop it first!"
+        BubbleType.CHAOS -> "Flings every bubble around it in random directions."
+        BubbleType.GHOST -> "Phases through chains — and splits into 3 when popped."
+        else -> "The classic bubble. Pop it!"
     }
 
     private fun applyCombo(result: com.ashwathai.bubbles.domain.usecase.TapResult, tapTimeMs: Long) {
@@ -495,6 +619,12 @@ class GameViewModel(
         val score = (gameState as? GameState.Playing)?.score ?: 0
         val highScore = (gameState as? GameState.Playing)?.highScore ?: 0
 
+        // ── Unlock tracking ──
+        levelUnlockedThisRun = false
+        lastLevelTimeFraction = if (levelTimeLimit > 0f) {
+            (levelTimeRemaining / levelTimeLimit).coerceIn(0f, 1f)
+        } else 1f
+
         // ── Milestone reward coins ──
         val milestoneCoins = EconomyConfig.milestoneRewardForLevel(currentLevel)
         viewModelScope.launch {
@@ -525,6 +655,11 @@ class GameViewModel(
         if (nextLevel <= config.levels.size) {
             currentLevelConfig = config.levels[nextLevel - 1]
             bubblesPoppedThisLevel = 0
+
+            if (nextLevel > scoreRepository.highestLevel.value) {
+                levelUnlockedThisRun = true
+                viewModelScope.launch { scoreRepository.setHighestLevel(nextLevel) }
+            }
 
             gameState = GameState.LevelComplete(score, highScore, currentLevel, nextLevel)
             gameLoopJob?.cancel()
@@ -562,6 +697,7 @@ class GameViewModel(
 
         currentLevelConfig = config.levels[nextLevel - 1]
         bubblesPoppedThisLevel = 0
+        bubblesSpawnedThisLevel = 0
         combo = 0
         comboExpiresAt = 0
         activePowerUps.clear()
@@ -572,6 +708,7 @@ class GameViewModel(
         bubbles.clear()
         messages.clear()
         timeSinceLastSpawn = 0f
+        levelUnlockedThisRun = false
 
         levelTimeLimit = currentLevelConfig.timeLimit
         levelTimeRemaining = currentLevelConfig.timeLimit
@@ -631,7 +768,10 @@ class GameViewModel(
             soundManager.playGameOver()
         }
 
-        val gameOverState = GameState.GameOver(score, highScore, isNewHighScore, isTimeUp, won, zen, daily, dailyReward)
+        val gameOverState = GameState.GameOver(
+            score, highScore, isNewHighScore, isTimeUp, won, zen, daily, dailyReward,
+            currentLevel = (gameState as? GameState.Playing)?.currentLevel ?: 1
+        )
         lastGameOverState = gameOverState
         gameState = gameOverState
         gameLoopJob?.cancel()
@@ -711,11 +851,7 @@ class GameViewModel(
 
         val savedScore = last.finalScore
         val savedHighScore = last.highScore
-        val savedLevel = (gameState as? GameState.GameOver)?.let {
-            // Recover level from the game state — we stored it indirectly
-            // For adventure, continue from level 1 if we can't recover
-            1
-        } ?: 1
+        val savedLevel = last.currentLevel.coerceAtLeast(1)
 
         // Restore the level config for the level we were on
         val lvlIndex = (savedLevel - 1).coerceIn(0, config.levels.size - 1)
@@ -723,6 +859,7 @@ class GameViewModel(
         levelTimeLimit = currentLevelConfig.timeLimit
         levelTimeRemaining = currentLevelConfig.timeLimit // full timer
         bubblesPoppedThisLevel = 0
+        bubblesSpawnedThisLevel = 0
         combo = 0
         comboExpiresAt = 0
         activePowerUps.clear()
@@ -736,6 +873,7 @@ class GameViewModel(
         shakeTrauma = 0f
         hitStopRemaining = 0f
         lastGameOverState = null
+        levelUnlockedThisRun = false
 
         gameState = GameState.Playing(
             score = savedScore,
@@ -775,15 +913,14 @@ class GameViewModel(
 
         val savedScore = last.finalScore
         val savedHighScore = last.highScore
-        val savedLevel = (gameState as? GameState.GameOver)?.let {
-            1 // For adventure, continue from level 1 if we can't recover
-        } ?: 1
+        val savedLevel = last.currentLevel.coerceAtLeast(1)
 
         val lvlIndex = (savedLevel - 1).coerceIn(0, config.levels.size - 1)
         currentLevelConfig = config.levels[lvlIndex]
         levelTimeLimit = currentLevelConfig.timeLimit
         levelTimeRemaining = currentLevelConfig.timeLimit + timeBonus
         bubblesPoppedThisLevel = 0
+        bubblesSpawnedThisLevel = 0
         combo = 0
         comboExpiresAt = 0
         activePowerUps.clear()
@@ -797,6 +934,7 @@ class GameViewModel(
         shakeTrauma = 0f
         hitStopRemaining = 0f
         lastGameOverState = null
+        levelUnlockedThisRun = false
 
         gameState = GameState.Playing(
             score = savedScore,

@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.ashwathai.bubbles.domain.model.BubbleSkins
 import com.ashwathai.bubbles.domain.model.BubbleThemes
 import com.ashwathai.bubbles.domain.model.EconomyConfig
@@ -34,6 +35,7 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
     private val PRESTIGE_KEY = intPreferencesKey("eco_prestige")
     private val DAILY_DATE_KEY = stringPreferencesKey("eco_daily_date")
     private val DAILY_BEST_KEY = intPreferencesKey("eco_daily_best")
+    private val SEEN_TYPES_KEY = stringSetPreferencesKey("eco_seen_bubble_types")
 
     private val _state = MutableStateFlow(EconomyState())
     override val state: kotlinx.coroutines.flow.StateFlow<EconomyState> = _state.asStateFlow()
@@ -58,7 +60,8 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
                 gamesPlayed = prefs[GAMES_KEY] ?: 0,
                 prestigeLevel = prefs[PRESTIGE_KEY] ?: 0,
                 dailyDate = prefs[DAILY_DATE_KEY] ?: "",
-                dailyBest = prefs[DAILY_BEST_KEY] ?: 0
+                dailyBest = prefs[DAILY_BEST_KEY] ?: 0,
+                seenBubbleTypes = prefs[SEEN_TYPES_KEY] ?: emptySet()
             )
         }
     }
@@ -147,5 +150,12 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
             it[DAILY_BEST_KEY] = best
         }
         _state.value = _state.value.copy(dailyDate = date, dailyBest = best)
+    }
+
+    override suspend fun markBubbleTypeSeen(type: String) {
+        if (type in _state.value.seenBubbleTypes) return
+        val updated = _state.value.seenBubbleTypes + type
+        dataStore.edit { it[SEEN_TYPES_KEY] = updated }
+        _state.value = _state.value.copy(seenBubbleTypes = updated)
     }
 }

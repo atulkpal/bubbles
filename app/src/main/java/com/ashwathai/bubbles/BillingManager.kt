@@ -105,9 +105,11 @@ object BillingManager : PurchasesUpdatedListener {
             .setProductList(productList)
             .build()
 
-        client.queryProductDetailsAsync(params) { result, productDetailsList ->
+        // PBL 8: callback now yields a QueryProductDetailsResult wrapper
+        client.queryProductDetailsAsync(params) { result, productDetailsResult ->
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
-                cachedProductDetails = productDetailsList?.firstOrNull {
+                val detailsList = productDetailsResult?.productDetailsList ?: emptyList()
+                cachedProductDetails = detailsList.firstOrNull {
                     it.productId == PRODUCT_REMOVE_ADS
                 }
                 Log.i(TAG, "Product queried: ${cachedProductDetails != null}")

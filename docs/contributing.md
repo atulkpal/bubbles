@@ -62,7 +62,8 @@ ui: improve glass surface rendering
 
 ## Testing
 
-- Write unit tests for use cases and repositories
+- Write unit tests for use cases and repositories (see `CanSpawnBubbleUseCaseTest`, `CheckLevelCompleteUseCaseTest`, `StarsForTimeFractionTest` for style)
+- Every gameplay-logic change needs a matching test — including regression tests for rejected implementations (see AGENTS.md §8)
 - Write UI tests for critical user flows
 - Test on minimum SDK (API 26) emulator
 - Verify reduced-motion mode works

@@ -17,6 +17,7 @@ class ScoreRepositoryImpl(private val dataStore: DataStore<Preferences>) : Score
     private val HIGH_SCORE_KEY = intPreferencesKey("high_score")
     private val ZEN_BEST_KEY = intPreferencesKey("zen_best")
     private val GAMES_PLAYED_KEY = intPreferencesKey("games_played")
+    private val HIGHEST_LEVEL_KEY = intPreferencesKey("highest_level")
 
     private val _highScore = MutableStateFlow(0)
     override val highScore: kotlinx.coroutines.flow.StateFlow<Int> = _highScore.asStateFlow()
@@ -27,10 +28,23 @@ class ScoreRepositoryImpl(private val dataStore: DataStore<Preferences>) : Score
     private val _gamesPlayed = MutableStateFlow(0)
     override val gamesPlayed: kotlinx.coroutines.flow.StateFlow<Int> = _gamesPlayed.asStateFlow()
 
+    private val _highestLevel = MutableStateFlow(1)
+    override val highestLevel: kotlinx.coroutines.flow.StateFlow<Int> = _highestLevel.asStateFlow()
+
     init {
         loadHighScore()
         loadZenBest()
         loadGamesPlayed()
+        loadHighestLevel()
+    }
+
+    private fun loadHighestLevel() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val prefs = dataStore.data.firstOrNull()
+            if (prefs != null) {
+                _highestLevel.value = (prefs[HIGHEST_LEVEL_KEY] ?: 1).coerceAtLeast(1)
+            }
+        }
     }
 
     private fun loadHighScore() {
@@ -72,6 +86,14 @@ class ScoreRepositoryImpl(private val dataStore: DataStore<Preferences>) : Score
             preferences[ZEN_BEST_KEY] = score
         }
         _zenBest.value = score
+    }
+
+    override suspend fun setHighestLevel(level: Int) {
+        val clamped = level.coerceAtLeast(1)
+        dataStore.edit { preferences ->
+            preferences[HIGHEST_LEVEL_KEY] = clamped
+        }
+        _highestLevel.value = clamped
     }
 
     override suspend fun incrementGamesPlayed() {

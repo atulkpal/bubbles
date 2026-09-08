@@ -17,6 +17,18 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
+/** Level at which each special bubble type unlocks (spec: Spawn Balance). */
+internal fun unlockLevelFor(type: BubbleType): Int = when (type) {
+    BubbleType.BOMB -> 3
+    BubbleType.FROZEN -> 5
+    BubbleType.RAINBOW -> 7
+    BubbleType.MAGNET -> 9
+    BubbleType.TICKING_BOMB -> 12
+    BubbleType.CHAOS -> 15
+    BubbleType.GHOST -> 18
+    else -> 1
+}
+
 private const val BOMB_BLAST_RADIUS = 180f
 private val BOMB_COLOR = Color(0xFF333333)
 private val RAINBOW_COLOR = Color(0xFFFFFFFF)
@@ -124,26 +136,54 @@ class SpawnBubblesUseCase {
 
         val hue = random.nextFloat()
 
-        // Level-based weights: higher levels see more special types
-        val levelWeight = min(1f, (levelConfig.level - 1).toFloat() / 50f) // 0..1 from level 1 to 51+
-        val magnetWeight = 0.18f + levelWeight * 0.12f
-        val tickingWeight = 0.18f + levelWeight * 0.10f
-        val chaosWeight = 0.10f + levelWeight * 0.10f
-        val ghostWeight = 0.06f + levelWeight * 0.08f
-        val bombWeight = 0.12f
-        val frozenWeight = 0.15f
-        val rainbowWeight = 0.20f * (0.6f + 0.4f * min(1f, prismBoost))
+        // ── Spawn balance (spec: LUXURY_DESIGN_PLAN.md — Spawn Balance & Bubble Tutorial) ──
+        // NORMAL is the base experience. Special types unlock by level and share a
+        // special budget that ramps with difficulty. Zen/Daily (level 0) use a
+        // fixed gentle mix of BOMB/FROZEN/RAINBOW only.
+        val configLevel = levelConfig.level
+        val specialBudget = when {
+            configLevel <= 0 -> 0.25f
+            configLevel <= 25 -> 0.10f + (configLevel - 1) * (0.45f / 24f) // 10% → 55% by level 25
+            else -> 0.65f
+        }
 
-        val totalWeight = bombWeight + frozenWeight + rainbowWeight + magnetWeight + tickingWeight + chaosWeight + ghostWeight
-        val roll = random.nextFloat() * totalWeight
-        val bubbleType = when {
-            roll < bombWeight -> BubbleType.BOMB
-            roll < bombWeight + frozenWeight -> BubbleType.FROZEN
-            roll < bombWeight + frozenWeight + rainbowWeight -> BubbleType.RAINBOW
-            roll < bombWeight + frozenWeight + rainbowWeight + magnetWeight -> BubbleType.MAGNET
-            roll < bombWeight + frozenWeight + rainbowWeight + magnetWeight + tickingWeight -> BubbleType.TICKING_BOMB
-            roll < bombWeight + frozenWeight + rainbowWeight + magnetWeight + tickingWeight + chaosWeight -> BubbleType.CHAOS
-            else -> BubbleType.GHOST
+        val prismFactor = 0.6f + 0.4f * min(1f, prismBoost)
+        val baseWeights = linkedMapOf(
+            BubbleType.BOMB to 0.20f,
+            BubbleType.FROZEN to 0.18f,
+            BubbleType.RAINBOW to 0.22f * prismFactor,
+            BubbleType.MAGNET to 0.14f,
+            BubbleType.TICKING_BOMB to 0.10f,
+            BubbleType.CHAOS to 0.09f,
+            BubbleType.GHOST to 0.07f
+        )
+        val zenDailyUnlocked = setOf(BubbleType.BOMB, BubbleType.FROZEN, BubbleType.RAINBOW)
+
+        fun unlockedWeight(type: BubbleType): Float {
+            val unlock = unlockLevelFor(type)
+            val unlocked = if (configLevel <= 0) type in zenDailyUnlocked else configLevel >= unlock
+            if (!unlocked) return 0f
+            val ramp = if (configLevel <= 0) 1f else min(1f, (configLevel - unlock + 1) / 4f)
+            return (baseWeights[type] ?: 0f) * ramp
+        }
+
+        val weightSum = baseWeights.keys.sumOf { unlockedWeight(it).toDouble() }.toFloat()
+        val bubbleType = if (weightSum <= 0f) {
+            BubbleType.NORMAL
+        } else {
+            // Roll over the full [0,1) range: unlocked specials consume
+            // specialBudget proportionally; everything beyond it is NORMAL.
+            var roll = random.nextFloat()
+            var picked = BubbleType.NORMAL
+            for (type in baseWeights.keys) {
+                val w = unlockedWeight(type) / weightSum * specialBudget
+                if (roll < w) {
+                    picked = type
+                    break
+                }
+                roll -= w
+            }
+            picked
         }
 
         val color = when {
@@ -447,8 +487,9 @@ class HandleTapUseCase {
                     vy = sin(angle + 3.14159f) * speed,
                     level = newLevel
                 ))
-            } else if (b.bubbleType == BubbleType.GHOST && !b.isPowerUp) {
-                // Ghost: spawns 3 smaller ghosts with random directions on pop
+            } else if (b.bubbleType == BubbleType.GHOST && !b.isPowerUp && b.splitGeneration == 0) {
+                // Ghost splits ONCE: 3 children at floored minimum radius that never re-split.
+                // (Unbounded recursion produced unhittable sub-minimum bubbles — see spec.)
                 val childCount = 3
                 repeat(childCount) {
                     val angle = random.nextFloat() * 2 * 3.14159f
@@ -457,13 +498,14 @@ class HandleTapUseCase {
                         id = System.nanoTime() + 100 + it.toLong(),
                         x = b.x,
                         y = b.y,
-                        radius = b.radius * 0.5f,
+                        radius = maxOf(b.radius * 0.5f, config.minRadius),
                         color = b.color.copy(alpha = 0.7f),
                         vx = cos(angle) * speed,
                         vy = sin(angle) * speed,
                         level = b.level,
                         bubbleType = BubbleType.GHOST,
-                        health = 1
+                        health = 1,
+                        splitGeneration = 1
                     ))
                 }
             } else if (b.bubbleType == BubbleType.CHAOS && !b.isPowerUp) {
@@ -811,8 +853,42 @@ class UpdateParticlesUseCase {
     }
 }
 
+/**
+ * Decides whether the spawn timer may emit a bubble this frame.
+ *
+ * Adventure: a level has a fixed budget of [maxBubbles] spawns — once the
+ * budget is spent, no more bubbles spawn and the level completes when the
+ * board is cleared. Board occupancy alone must NOT gate spawning, otherwise
+ * every pop frees a slot and the board refills forever, making the level
+ * uncompletable.
+ *
+ * Zen/Daily: endless mode — refill up to the board cap.
+ */
+class CanSpawnBubbleUseCase {
+    operator fun invoke(
+        bubblesOnBoard: Int,
+        maxBubbles: Int,
+        bubblesSpawnedSoFar: Int,
+        isEndlessMode: Boolean
+    ): Boolean {
+        if (bubblesOnBoard >= maxBubbles) return false
+        return if (isEndlessMode) true else bubblesSpawnedSoFar < maxBubbles
+    }
+}
+
 class CheckLevelCompleteUseCase {
-    operator fun invoke(bubbles: List<Bubble>): Boolean {
+    /**
+     * A level is complete only when every bubble assigned to the level has been
+     * spawned AND the board has been cleared. An empty board alone is NOT enough:
+     * at level start no bubbles have spawned yet, which previously caused
+     * instant back-to-back level completion.
+     */
+    operator fun invoke(
+        bubbles: List<Bubble>,
+        totalBubblesToSpawn: Int,
+        bubblesSpawnedSoFar: Int
+    ): Boolean {
+        if (bubblesSpawnedSoFar < totalBubblesToSpawn) return false
         return bubbles.isEmpty()
     }
 }
