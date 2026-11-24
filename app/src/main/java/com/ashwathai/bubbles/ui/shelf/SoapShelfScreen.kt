@@ -151,7 +151,8 @@ fun SoapShelfScreen(
                         .size(44.dp)
                         .clip(CircleShape)
                         .background(SoapColors.PillFill)
-                        .clickable(onClickLabel = "Close soap shelf") { onClose() },
+                        .clickable(onClickLabel = "Close soap shelf") { onClose() }
+                        .semantics { contentDescription = "Close soap shelf" },
                     contentAlignment = Alignment.Center
                 ) { Text("✕", color = SoapColors.TextPrimary, fontSize = 16.sp) }
             }

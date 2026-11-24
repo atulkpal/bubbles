@@ -134,7 +134,8 @@ class SpawnBubblesUseCase {
         val dist = sqrt(dx * dx + dy * dy)
 
         val isPowerUp = forcePowerUp || random.nextFloat() < levelConfig.powerUpChance
-        val powerUpType = if (isPowerUp) PowerUpType.values().random(random) else null
+        // PRISM is excluded: it never had an effect (audit B23), so it must not appear.
+        val powerUpType = if (isPowerUp) PowerUpType.values().filter { it != PowerUpType.PRISM }.random(random) else null
 
         val hue = random.nextFloat()
 

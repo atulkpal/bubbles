@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Hushpop relaunch (v1.3, versionCode 4) — 2026-11-24
+- **New identity:** "Hushpop: Bubble Pop & Relax"; real-looking soap bubbles (thin-film rainbow, rim, window highlight, lamp reflection, wobble) in a night room; new icon generated from code; no gold, no serif.
+- **Float is home:** the app opens straight into calm endless bubbles that rise and drift away. No timer, no fail, no score words; a "pops today" pill, a jar button and a menu button.
+- **Hold to blow:** hold on empty space to inflate your own bubble above the fingertip; release (or wait) and it floats away.
+- **Breathe mode:** 1/3/5-minute guided sessions (inhale 4 s, hold 2 s, exhale 6 s, pop).
+- **Soap Shelf:** every pop adds a drop; 250 drops unlock the next of 6 soaps (colours, room, lamp, pop pitch). Soap of the day (free for everyone), a streak that never resets, a one-time head start for existing players.
+- **Sound:** procedurally generated wet pops pitched by size that climb a pentatonic phrase, a breathy blow loop, rain-on-glass ambience (`tools/sound/make_soap_sounds.py`).
+- **Same game on every phone:** simulation in density-independent world units; smallest bubble about 56 dp; pops on touch-down; taps hit the topmost bubble.
+- **Challenge:** the old Adventure, now 20 levels, none under 30 s; Magnet, Ticking Bomb, Chaos, Ghost and the Prism power-up no longer spawn (their promised effects were never built).
+- **Removed:** levels 21–100, prestige, upgrade tree, skins/themes pickers, Daily Challenge entry, power-up-guarantee ad.
+- **Ads & money:** no banner or interstitial in a player's first 3 sessions and never during play; opt-in "+50 drops" video; Remove Ads is presented as the **Supporter Pack** with the exclusive Moonlit Pearl soap.
+- **Achievements:** prestige / daily / level-50 badges replaced by First Soap, Soap Collector and A Calm Week.
+- **Fixes found in QA:** Float no longer shows a pause menu after returning to the app; jar and shelf-close buttons have TalkBack labels; Breathe is visible to brand-new players; Settings and the shelf are opaque and inset correctly.
+
 ### Fixed (v1.3 "stop the harm", from the 2026-11-24 audit)
 - **Ads follow Play policy:**
   - The forced rewarded ad between levels is replaced by a real interstitial: none before level 6, then at most every 3rd level with a 3-minute gap.

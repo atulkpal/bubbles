@@ -64,6 +64,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.navigationBarsPadding
 import com.ashwathai.bubbles.ui.theme.soap.SoapColors
 import androidx.compose.ui.draw.clip
@@ -1055,7 +1057,8 @@ fun FloatHud(
                 .clip(CircleShape)
                 .background(SoapColors.PillFill)
                 .border(1.dp, SoapColors.PillStroke, CircleShape)
-                .clickable(onClickLabel = "Open soap shelf") { onShelf() },
+                .clickable(onClickLabel = "Open soap shelf") { onShelf() }
+                .semantics { contentDescription = "Soap shelf" },
             contentAlignment = Alignment.Center
         ) {
             JarIcon(fill = jarFill, liquid = jarColor, modifier = Modifier.size(30.dp))
@@ -1077,7 +1080,7 @@ fun FloatHud(
                 modifier = Modifier.size(22.dp)
             )
         }
-        if (!breathing && !showBlowHint) {
+        if (!breathing) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
@@ -1110,7 +1113,7 @@ fun FloatHud(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(bottom = 32.dp)
+                    .padding(bottom = 100.dp) // sits just above the Breathe button
             )
         }
     }
@@ -1537,7 +1540,7 @@ fun PauseOverlay(onResume: () -> Unit, onRestart: () -> Unit, onHome: () -> Unit
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.55f)),
+            .background(SoapColors.NightTop.copy(alpha = 0.5f)),
         contentAlignment = Alignment.Center
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -1634,7 +1637,7 @@ fun LevelCompleteScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.6f)),
+            .background(SoapColors.NightTop.copy(alpha = 0.55f)),
         contentAlignment = Alignment.Center
     ) {
         GlassSurface(
@@ -1816,7 +1819,7 @@ fun GameOverScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.6f)),
+            .background(SoapColors.NightTop.copy(alpha = 0.55f)),
         contentAlignment = Alignment.Center
     ) {
         GlassSurface(shape = RoundedCornerShape(LuxuryRadius.XL),

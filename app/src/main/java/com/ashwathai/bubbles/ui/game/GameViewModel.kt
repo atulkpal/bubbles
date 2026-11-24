@@ -629,11 +629,11 @@ class GameViewModel(
         }
     }
 
-    fun resumeGame() {
+    fun resumeGame(silent: Boolean = false) {
         when (val state = gameState) {
             is GameState.Paused -> {
                 gameState = GameState.Playing(state.score, state.highScore, state.currentLevel, bubblesPoppedThisLevel, state.isZen, state.isDaily)
-                soundManager.playClick()
+                if (!silent) soundManager.playClick()
                 musicManager.resume()
                 startGameLoop()
             }
@@ -1238,7 +1238,8 @@ class GameViewModel(
      */
     fun onActivityResumed() {
         when (gameState) {
-            is GameState.Paused -> { /* stay silent while the game is paused */ }
+            // Float is calm: no pause menu on return, it simply carries on drifting.
+            is GameState.Paused -> if (isFloat) resumeGame(silent = true)
             is GameState.Ready -> musicManager.play(AudioConfig.trackForMode(isZen = false))
             else -> musicManager.resume()
         }

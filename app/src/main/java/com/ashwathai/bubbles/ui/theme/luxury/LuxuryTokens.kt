@@ -23,7 +23,7 @@ object LuxuryColors {
     val Paper200 = Color(0xFFE7E5E4)
 
     val MutedForeground = Color(0xFF78716C)
-    val Destructive = Color(0xFFDC2626)
+    val Destructive = Color(0xFFFF8F8F) // relaunch: soft coral, never an alarm red
 
     val IceBlue = Color(0xFFB3E5FC)
     val PrismMagenta = Color(0xFFE91E63)

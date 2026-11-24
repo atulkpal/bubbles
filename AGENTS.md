@@ -6,7 +6,9 @@ Welcome, Agent! This document is your single source of truth for understanding t
 
 ## 1. Project High-Level Overview
 
-**Bubbles** is an Android bubble-popping stress buster game with a premium "Midnight Glass" design system — liquid glass UI, gold accents, spring animations, and haptic feedback.
+**Hushpop** (formerly "Bubbles"; package unchanged) is a calm soap-bubble toy for stress relief: real-looking iridescent bubbles that pop on touch, hold-to-blow, a guided Breathe mode, a Soap Shelf collection, and an optional 20-level Challenge. Relaunched on 2026-11-24 — see `docs/RELAUNCH_SPEC.md` (approved) and `docs/audit-2026-11-24/00-SUMMARY.md`.
+
+> **Relaunch note (2026-11-24):** the "Midnight Glass" gold/serif identity described in older sections below is superseded. New UI uses the **Soap** tokens in `ui/theme/soap/SoapTokens.kt` and the night-room palette; legacy `Luxury*` gold tokens were re-pointed to lilac/lamp colours. The game runs in density-independent **world units** (`WorldScale`), Float is home, and growth is organic only (no paid UA).
 
 *   **Key Philosophy:** A relaxing yet engaging bubble-popper with realistic game mechanics, a complete economy system (coins, skins, themes), and a luxury aesthetic inspired by Apple/Google design language.
 *   **Company & Brand:** Developed by **Ashwath AI** (Package ID: `com.ashwathai.bubbles`).
@@ -134,6 +136,16 @@ Welcome, Agent! This document is your single source of truth for understanding t
 - [x] **Accessibility:** (2026-09-12) Basic pass — content descriptions on interactive controls, toggle-row touch targets ≥48dp, contrast fixes. Full TalkBack navigation audit still open.
 - [ ] **Localization:** Hindi + English string resources. (SKIPPED by product decision 2026-09-12 — English-only hardcoded strings stay for now)
 
+### Hushpop relaunch (2026-11-24, branch `feature/relaunch-hushpop`)
+- [x] Step 1: world units (same game on every screen), pop on touch-down, topmost hit + touch slop
+- [x] Step 2: soap bubble renderer + Soap night-room tokens
+- [x] Step 3: Float as home, hold-to-blow, generated soft pops / blow / rain ambience
+- [x] Step 4: Soap Shelf (jar, 7 soaps, soap of the day, kind streak, coin head start)
+- [x] Step 5: Breathe mode (1/3/5 min)
+- [x] Step 6: cuts (levels 21–100, 4 broken specials, prestige, upgrades, skins/themes, daily entry), rename, ad-free first 3 sessions, Supporter Pack + Moonlit Pearl, rewarded +50 drops
+- [x] Step 7: icon, store screenshots, listing text, privacy/website text, QA pass, release build `releases/hushpop-v1.3-code4.aab`
+- [ ] Owner: upload key reset decision, trademark check for "Hushpop", Play Console listing + in-app product rename/price, push website, upload build
+
 ### Low Priority / Future
 - [x] **New Bubble Types:** Magnet, Ticking Bomb, Chaos, Ghost — 4 new special types with unique mechanics.
 - [x] **Procedural Level Generation:** `generateProceduralLevel()` scales levels 21–100 with wind, gravity, boss frequency, escalating difficulty.
@@ -176,7 +188,7 @@ All UI components MUST use the luxury design system:
 
 | Concern | Source |
 |---------|--------|
-| Colors | `LuxuryTokens.kt` — never hardcode |
+| Colors | `SoapTokens.kt` (relaunch) / `LuxuryTokens.kt` (legacy screens) — never hardcode |
 | Typography | `LuxuryTypography.kt` — Cormorant + Montserrat |
 | Spacing/Radius | `LuxuryTokens.kt` — spacing scale, radius scale |
 | Motion | `LuxuryMotion.kt` — spring presets, durations |
@@ -247,4 +259,4 @@ To maintain continuous alignment and prevent code-spec drift, all agents and dev
 | Compose BOM | Managed | `gradle/libs.versions.toml` |
 | Hilt | 2.52 (classpath only, not used — manual DI via AppModule) | `build.gradle.kts` |
 | Ad SDK | ironSource LevelPlay (banners only) | `gradle/libs.versions.toml` |
-| Version | 1.3 (versionCode 4) — approved by owner 2026-11-24 | `app/build.gradle.kts` + `APP_VERSION` in `MainActivity.kt` |
+| Version | 1.3 (versionCode 4) — approved by owner 2026-11-24 · store title "Hushpop: Bubble Pop & Relax" | `app/build.gradle.kts` + `APP_VERSION` in `MainActivity.kt` |
