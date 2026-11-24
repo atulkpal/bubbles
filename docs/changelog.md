@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Achievements** — 12 local milestone badges across 4 families (Pops 100/1k/10k · Combo 10x/25x/50x · Levels 5/20/50 · Progress: Prestige 1, 10 games, Daily 500). Pure `AchievementEngine` in the domain layer evaluates `EconomyState` (25 coins per badge, exactly-once, persisted via DataStore `unlockedAchievements`). Gold glass unlock chip with spring entrance (static under reduced-motion), level-up sound + haptic. New "Achievements" section in Settings above Stats (unlocked = gold serif title, locked = dimmed "?").
+- **Compose UI tests** — `SettingsScreenUiTest` (8 tests): section rendering, achievements display, upgrade pill callback, theme selection, sound toggle, close affordance, premium-section gating.
+
+### Changed
+- **Settings screen polish** — upgrade cost pill restyled as a glass pill (gold hairline when affordable, dimmed when not, gold outline "MAX") showing next-level effect values ("5s → 7s"); skin/theme cards get gold selection ring + check chip + press-scale spring (`LuxuryMotion.Press`) and dimmed locked state; duplicate bottom CLOSE button removed (top-right glass chip remains, now 48dp); consistent MD/SM section spacing.
+- **Settings extraction** — `SettingsScreen`, `UpgradeRow`, `SkinCard`, `ThemeCard`, `StatRow`, `AboutLinkChip` moved verbatim out of `MainActivity.kt` (2,566 → ~2,034 lines) into `ui/settings/SettingsScreen.kt`. No behavior change.
+- **Accessibility** — whole toggle row is the touch target (`LuxuryToggle`, switch itself is 52×30dp); locked-achievement icon contrast raised; all interactive controls have content descriptions; buttons ≥ 48dp.
+
+### Verified
+- **ProGuard/R8** — release build (`assembleRelease`, minify + shrinkResources) succeeds and the minified APK installs and runs on a Pixel emulator with zero fatal exceptions. Broad `com.ashwathai.bubbles.**` keep rule makes DataStore/Compose safe (app code is kept); kotlinx-serialization rules are vestigial (no `@Serializable` in app code).
+- **Performance (emulator, software GPU — pessimistic)** — cold start 2.45s, no crashes over a driven gameplay session, PSS ~138MB. Frame jank on headless emulator is not representative of device GPUs; on-device profiling still recommended. Known future optimization: `updateGame()` rebuilds three collections per frame (GC pressure).
+
 ## [1.2] — 2026-09-08
 
 ### Changed

@@ -134,10 +134,40 @@ from level 1.
 - Level clear feels earned: motion, stars, count-up, unlock chip.
 - Returning players resume at their frontier level or replay any cleared level.
 
+## Settings Screen Polish & Achievements (spec — 2026-09-12)
+
+### Problem
+Settings works but the visual hierarchy is uneven: upgrade rows mix a coin-cost pill with plain text details and show current (not next) effect values; skin/theme cards signal selection with a flat background swap only; the close affordance is duplicated (top-right icon chip + bottom CLOSE button); and the whole settings subtree lives inline in a 2,500-line MainActivity. Separately, the economy already tracks lifetime pops, best combo, games played, prestige, skins and themes — but none of it is celebrated. Achievements surface that data as milestone badges.
+
+### Workstream A — Settings screen polish (no behavior change)
+1. **Extract first:** move the settings subtree verbatim from `MainActivity.kt` into `ui/settings/SettingsScreen.kt` (with `UpgradeRow`, `SkinCard`, `ThemeCard`, `StatRow`, `AboutLinkChip` co-located). Pure move — zero visual change.
+2. **Upgrade rows:** cost pill becomes a `GlassSurface` pill — gold hairline when affordable, dimmed when not, "MAX" in gold outline when maxed. Detail line shows next-level effect: "15s → 17s".
+3. **Skin/theme cards:** selected = gold hairline ring + small gold check chip; locked = dimmed + lock overlay; press feedback via `LuxuryMotion` press-scale spring.
+4. **Close:** keep the top-right glass icon chip; remove the duplicate bottom CLOSE button.
+5. **Rhythm & a11y:** consistent section spacing (`MD` between sections, `SM` inside cards); content descriptions on all interactive icons; touch targets ≥ 48dp.
+
+### Workstream B — Achievements (local milestone badges, no leaderboards)
+1. **Catalog:** 12 achievements in 4 families (domain/model, data-only):
+   - Pops: 100 / 1,000 / 10,000 lifetime pops
+   - Combo: 10x / 25x / 50x best combo
+   - Levels: clear level 5 / 20 / 50
+   - Collection: own 3 skins · own all themes · reach Prestige 1
+2. **State:** `EconomyState.unlockedAchievements: Set<String>` (DataStore, default empty — backward compatible with existing installs).
+3. **Engine:** pure `AchievementEngine.evaluate(EconomyState): Set<String>` returns newly unlocked ids given prior state. `GameViewModel` calls it after each economy mutation (pop batch, combo update, level clear, skin/theme purchase, prestige). First unlock only, exactly-once.
+4. **Reward & moment:** 25 coins per achievement; gold GlassSurface unlock chip (spring entrance, static fade under reduced-motion); SoundManager level-up sound + success haptic pattern.
+5. **Settings section:** "Achievements" above Stats — 12 glass chips; unlocked = gold icon + serif name; locked = dimmed with "?" name (simple, no progress bars).
+6. No new screens, no network, no leaderboard. Everything local via DataStore.
+
+### Acceptance
+- Settings hierarchy clear, selection states unmistakable, single close affordance, settings code extracted out of MainActivity, no regressions elsewhere.
+- Achievement unlock is exactly-once, persists across restarts, works offline.
+- Unit tests: `AchievementEngineTest` (all 12 + no-unlock + idempotency), `EconomyRepositoryImpl` persistence of `unlockedAchievements`.
+- UI tests: settings opens → toggles sound → closes; achievements section renders an unlocked chip with seeded state.
+
 ## Current status
+- **DONE (2026-09-12):** Settings polish + Achievements spec implemented on `feature/backlog-completion`. Settings extracted to `ui/settings/SettingsScreen.kt`; achievements (12 badges, `AchievementEngine`, DataStore persistence, unlock chip, Settings section); ProGuard verified (release APK runs on Pixel emulator, zero crashes); 8 Compose UI tests green; a11y pass done. Emulator perf baseline recorded in changelog.
 - **DONE:** Steps 1–5 complete. All screens redesigned, glass system, fonts, haptics, staggered animations, light-aware bubbles, custom icon.
 - **DONE:** Spawn balance + ghost containment + bubble tutorial (2026-09-08). Level completion fixed (spawn budget gate), achievement choreography on level clear, continue + level select.
-- **TODO:** Settings screen polish — upgrade buttons restyled to glass pills, but overall settings layout/spacing/visual hierarchy still needs refinement. Skin/theme card selection states could be improved. Close button styling needs work.
 
 ## Acceptance criteria
 - Zero emojis as structural icons
@@ -147,3 +177,46 @@ from level 1.
 - Spring animations + haptics on interactions
 - Reduced-motion respected; touch targets >= 48dp; contrast >= 4.5:1
 - Gameplay logic untouched (phases 1-4 behaviors preserved)
+
+## Audio System (spec - 2026-10-07)
+
+### Problem
+All 5 files in `app/src/main/res/raw/` are 0-byte placeholders, so `SoundManager`
+loads successfully but plays silence. There is no background music at all.
+
+### Asset sources (all CC0, no attribution required)
+- SFX pops/cracks: Kenney Impact Sounds (`impactGlass_light/heavy/medium`)
+- Power-up/combo/boss: Kenney Digital Audio (`powerUp3`, `phaserUp2`, `lowDown`)
+- Coin: Kenney RPG Audio (`handleCoins`); UI tap: Kenney UI Pack (`tap-a`)
+- Win/lose stings: Kenney Music Jingles, selected by spectral-centroid slope
+  analysis (strongest ascending = win `NES00`, strongest descending = lose `PIZZI01`)
+- BGM: 2 synthesized seamless ambient pad loops (integer-cycle partials, no clicks):
+  `music_adventure.wav` (A-major, 32s, menu/Adventure/Daily),
+  `music_zen.wav` (D-major, 40s, Zen). Generated by `gen_bgm.py`, owned by the studio.
+
+### Design tokens (`AudioConfig`, domain layer, pure/testable)
+- `DEFAULT_SFX_VOLUME = 1.0f`, `DEFAULT_MUSIC_VOLUME = 0.35f`
+- `CROSSFADE_MS = 1500L` — every track switch crossfades, never hard-cuts
+- `trackForMode(isZen)` — Zen -> zen loop, everything else -> adventure loop
+- Volumes coerced to [0f, 1f]
+
+### Architecture
+- `SoundManager` (SoundPool, SFX only): distinct raw per event
+  (`pop1/2/3`, `bigpop`, `crack`, `split`, `powerup`, `combo`, `coin`, `click`,
+  `levelup`, `gameover`, `boss`) + `setSfxVolume` master multiplier.
+- `MusicManager` (NEW, dual-MediaPlayer): gapless `setLooping` playback,
+  coroutine crossfade between tracks, `play / pause / resume / stop / release`.
+- `SettingsRepository` gains `musicEnabled` (default true),
+  `sfxVolume` (default 1.0), `musicVolume` (default 0.35), DataStore-persisted.
+- `GameViewModel` drives music per game state (menu/adventure/zen, pause/resume);
+  `MainActivity` pauses on app background, releases on destroy.
+- Settings "AUDIO" section: Sound toggle, Music toggle, SFX slider, Music slider
+  (`LuxurySlider`, gold, >= 48dp touch target, content descriptions).
+
+### Acceptance
+- Tapping a bubble plays a crisp varied pop; every game event has a distinct sound.
+- Ambient music plays per mode and crossfades on mode switch; sliders change
+  volumes live; toggles + volumes persist across restarts.
+- Unit tests: `AudioConfigTest` (defaults, clamping, track mapping),
+  `SettingsRepositoryImplAudioTest` (persistence round-trip).
+- `./gradlew assembleDebug` + `testDebugUnitTest` green.

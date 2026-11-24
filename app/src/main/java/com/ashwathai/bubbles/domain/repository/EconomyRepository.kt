@@ -16,4 +16,7 @@ interface EconomyRepository {
     suspend fun prestige()
     suspend fun completeDailyChallenge(score: Int, date: String)
     suspend fun markBubbleTypeSeen(type: String)
+
+    /** Permanently records achievement ids as unlocked (additive, exactly-once). */
+    suspend fun unlockAchievements(ids: Set<String>)
 }

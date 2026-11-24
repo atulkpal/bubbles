@@ -330,7 +330,8 @@ data class EconomyState(
     val prestigeLevel: Int = 0,
     val dailyDate: String = "",
     val dailyBest: Int = 0,
-    val seenBubbleTypes: Set<String> = emptySet()
+    val seenBubbleTypes: Set<String> = emptySet(),
+    val unlockedAchievements: Set<String> = emptySet()
 ) {
     val slowMoDurationMs: Long get() = 5000L + (slowMoLevel - 1) * 1500L
     val freezeDurationMs: Long get() = 3000L + (freezeLevel - 1) * 800L

@@ -92,7 +92,7 @@ Welcome, Agent! This document is your single source of truth for understanding t
 1. **Bubble-Popping Game Engine:** Full game loop with spawn, update, tap detection, collision, and pop mechanics.
 2. **Three Game Modes:** Adventure (timed, level-based), Zen (endless), Daily Challenge (seed-based).
 3. **Economy System:** Coin earning, skin/theme unlocking, power-up upgrades, prestige system.
-4. **Sound & Haptics:** SoundPool-based effects (pop, big pop, combo, coin, level up, game over) + distinct vibration patterns.
+4. **Sound & Haptics:** SoundPool-based effects (13 distinct CC0 clips: pop x3, big pop, crack, split, power-up, combo, coin, click, level-up, game over, boss) + ambient BGM (`MusicManager`, dual-MediaPlayer, 1.5s crossfade, adventure/zen loops) + SFX/music volume sliders (defaults 1.0 / 0.35, DataStore-persisted) + distinct vibration patterns.
 5. **Persistence:** DataStore-based for scores, economy, and settings.
 
 ### Luxury Design System
@@ -120,19 +120,19 @@ Welcome, Agent! This document is your single source of truth for understanding t
 ## 4. What Needs To Be Done (Backlog)
 
 ### High Priority
-- [ ] **Settings Screen Polish:** Upgrade buttons restyled to glass pills; overall layout/spacing/visual hierarchy refinement; skin/theme card selection states; close button styling.
+- [x] **Settings Screen Polish:** (2026-09-12) Settings extracted to `ui/settings/SettingsScreen.kt`; upgrade cost glass pills with next-level effect values; skin/theme gold selection ring + check chip + press spring; duplicate close button removed; consistent spacing.
 - [x] **Release Signing:** Generate proper release keystore (current `release-key.jks` is a placeholder).
-- [ ] **ProGuard Rules:** Verify R8/obfuscation doesn't break DataStore or Compose.
+- [x] **ProGuard Rules:** (2026-09-12) Verified — release build passes and the minified APK runs on a Pixel emulator with zero crashes. Broad app keep rule covers DataStore/Compose; kotlinx-serialization rules vestigial (no `@Serializable` usage).
 - [x] **Ad Integration:** ironSource LevelPlay banner ads are live. Add rewarded + interstitial ads for monetization.
 - [x] **In-App Purchase: Remove Ads** — Google Play Billing 7.1.1 integration, BillingManager singleton, `adsRemoved` persistence, ad gating in LevelPlayAdManager + banner, "Remove Ads" UI in Settings.
 - [x] **Play Store Listing:** Finalize store description, screenshots, and feature graphic.
 
 ### Medium Priority
-- [x] **Unit Tests:** Cover GameUseCases, repositories, and GameViewModel logic. (`CheckLevelCompleteUseCaseTest`, `EconomyConfigTest`)
-- [ ] **UI Tests:** Critical user flows (start game → pop → level complete → game over).
-- [ ] **Performance Profiling:** Frame drops on low-end devices, memory leaks.
-- [ ] **Accessibility:** Screen reader support, content descriptions, contrast audit.
-- [ ] **Localization:** Hindi + English string resources.
+- [x] **Unit Tests:** Cover GameUseCases, repositories, and GameViewModel logic. (`CheckLevelCompleteUseCaseTest`, `EconomyConfigTest`, `AchievementEngineTest`, `EconomyRepositoryImplAchievementsTest`, `SpawnBalanceTest`, `StarsForTimeFractionTest`, `CanSpawnBubbleUseCaseTest`)
+- [x] **UI Tests:** (2026-09-12) `SettingsScreenUiTest` — 8 Compose tests on Settings flows (sections, achievements, upgrade pill, theme select, toggles, close, premium gating). Full start→pop→complete game-flow tests still open.
+- [x] **Performance Profiling:** (2026-09-12) Emulator baseline: cold start 2.45s, zero crashes, PSS ~138MB (software GPU — pessimistic). Known optimization: `updateGame()` per-frame collection rebuilds. On-device profiling still recommended.
+- [x] **Accessibility:** (2026-09-12) Basic pass — content descriptions on interactive controls, toggle-row touch targets ≥48dp, contrast fixes. Full TalkBack navigation audit still open.
+- [ ] **Localization:** Hindi + English string resources. (SKIPPED by product decision 2026-09-12 — English-only hardcoded strings stay for now)
 
 ### Low Priority / Future
 - [x] **New Bubble Types:** Magnet, Ticking Bomb, Chaos, Ghost — 4 new special types with unique mechanics.
@@ -141,9 +141,10 @@ Welcome, Agent! This document is your single source of truth for understanding t
 - [x] **Interstitial Ads Between Levels:** Every 3rd level (1–10), every 2nd (11–20), every level (21+).
 - [x] **Coin-Based Continue:** 50 coins → +15s on Game Over, no ad required.
 - [ ] **Leaderboards:** Global and friend-based score competition.
-- [ ] **Achievements:** Milestone rewards and badges.
-- [ ] **KMP Migration:** Kotlin Multiplatform for iOS support.
-- [ ] **Time-Travel Mode:** Historical replay of daily challenges.
+- [x] **Achievements:** (2026-09-12) 12 local milestone badges, pure `AchievementEngine`, DataStore-persisted, 25-coin rewards, gold unlock chip, Settings section. No leaderboards/network by design.
+- [ ] **KMP Migration:** CUT (2026-09-12) — conflicts with keeping the game simple.
+- [ ] **Time-Travel Mode:** CUT (2026-09-12) — conflicts with keeping the game simple.
+- [ ] **Leaderboards:** CUT (2026-09-12) — keeping the game simple; local Achievements fill the recognition niche.
 
 ---
 

@@ -6,7 +6,11 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ashwathai.bubbles.data.sound.MusicManager
 import com.ashwathai.bubbles.data.sound.SoundManager
+import com.ashwathai.bubbles.domain.model.AchievementEngine
+import com.ashwathai.bubbles.domain.model.AudioConfig
+import com.ashwathai.bubbles.domain.model.Achievements
 import com.ashwathai.bubbles.domain.model.Bubble
 import com.ashwathai.bubbles.domain.model.BubbleSkins
 import com.ashwathai.bubbles.domain.model.BubbleThemes
@@ -55,6 +59,7 @@ class GameViewModel(
     private val settingsRepository: SettingsRepository,
     private val economyRepository: EconomyRepository,
     private val soundManager: SoundManager,
+    private val musicManager: MusicManager,
     private val spawnBubblesUseCase: SpawnBubblesUseCase,
     private val updateBubblesUseCase: UpdateBubblesUseCase,
     private val handleTapUseCase: HandleTapUseCase,
@@ -118,6 +123,12 @@ class GameViewModel(
         private set
     var soundEnabled by mutableStateOf(true)
         private set
+    var musicEnabled by mutableStateOf(true)
+        private set
+    var sfxVolume by mutableStateOf(AudioConfig.DEFAULT_SFX_VOLUME)
+        private set
+    var musicVolume by mutableStateOf(AudioConfig.DEFAULT_MUSIC_VOLUME)
+        private set
     var hapticsEnabled by mutableStateOf(true)
         private set
     var reducedMotion by mutableStateOf(false)
@@ -125,6 +136,10 @@ class GameViewModel(
 
     /** True on the LevelComplete screen when a NEW level was just unlocked (gold chip). */
     var levelUnlockedThisRun by mutableStateOf(false)
+        private set
+
+    /** Most recently unlocked achievement id (gold chip moment). Null = none showing. */
+    var newlyUnlockedAchievement by mutableStateOf<String?>(null)
         private set
 
     /** Fraction of the level timer remaining when the last level was cleared (drives star rating). */
@@ -187,8 +202,32 @@ class GameViewModel(
         viewModelScope.launch {
             economyRepository.state.collect { state ->
                 economy = state
+                evaluateAchievements()
             }
         }
+    }
+
+    /**
+     * Achievement watch: every economy mutation re-runs the pure engine; any
+     * not-yet-unlocked satisfied achievement is persisted, rewarded, and surfaced
+     * as a chip. Self-terminating — unlocking changes economy state, and the
+     * re-evaluation then returns empty.
+     */
+    private fun evaluateAchievements() {
+        val newly = AchievementEngine.evaluate(economy, highestLevel)
+        if (newly.isEmpty()) return
+        viewModelScope.launch {
+            economyRepository.unlockAchievements(newly)
+            economyRepository.addCoins(newly.size * Achievements.REWARD_COINS)
+        }
+        soundManager.playLevelUp()
+        soundManager.vibrateLevelUp()
+        newlyUnlockedAchievement = newly.last()
+    }
+
+    /** Dismiss the achievement unlock chip (auto-called by the UI after a delay). */
+    fun dismissAchievementChip() {
+        newlyUnlockedAchievement = null
     }
 
     private fun observeSettings() {
@@ -207,6 +246,24 @@ class GameViewModel(
         viewModelScope.launch {
             settingsRepository.reducedMotion.collect {
                 reducedMotion = it
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.musicEnabled.collect {
+                musicEnabled = it
+                musicManager.setMusicEnabled(it)
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.sfxVolume.collect {
+                sfxVolume = it
+                soundManager.setSfxVolume(it)
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.musicVolume.collect {
+                musicVolume = it
+                musicManager.setVolume(it)
             }
         }
     }
@@ -289,6 +346,8 @@ class GameViewModel(
             isZen = isZen,
             isDaily = isDaily
         )
+        musicManager.play(AudioConfig.trackForMode(isZen))
+        soundManager.playClick()
         startGameLoop()
     }
 
@@ -297,6 +356,8 @@ class GameViewModel(
             is GameState.Playing -> {
                 gameState = GameState.Paused(state.score, state.highScore, state.currentLevel, state.isZen, state.isDaily)
                 gameLoopJob?.cancel()
+                soundManager.playClick()
+                musicManager.pause()
             }
             else -> {}
         }
@@ -306,6 +367,8 @@ class GameViewModel(
         when (val state = gameState) {
             is GameState.Paused -> {
                 gameState = GameState.Playing(state.score, state.highScore, state.currentLevel, bubblesPoppedThisLevel, state.isZen, state.isDaily)
+                soundManager.playClick()
+                musicManager.resume()
                 startGameLoop()
             }
             else -> {}
@@ -789,6 +852,8 @@ class GameViewModel(
         lastGameOverState = null
         gameLoopJob?.cancel()
         gameState = GameState.Ready
+        soundManager.playClick()
+        musicManager.play(AudioConfig.trackForMode(isZen = false))
     }
 
     fun upgradePowerUp(key: String) {
@@ -831,12 +896,36 @@ class GameViewModel(
         viewModelScope.launch { settingsRepository.setSoundEnabled(!soundEnabled) }
     }
 
+    fun toggleMusic() {
+        viewModelScope.launch { settingsRepository.setMusicEnabled(!musicEnabled) }
+    }
+
+    fun updateSfxVolume(volume: Float) {
+        viewModelScope.launch { settingsRepository.setSfxVolume(volume) }
+    }
+
+    fun updateMusicVolume(volume: Float) {
+        viewModelScope.launch { settingsRepository.setMusicVolume(volume) }
+    }
+
     fun toggleHaptics() {
         viewModelScope.launch { settingsRepository.setHapticsEnabled(!hapticsEnabled) }
     }
 
     fun toggleReducedMotion() {
         viewModelScope.launch { settingsRepository.setReducedMotion(!reducedMotion) }
+    }
+
+    /**
+     * Called by the Activity on resume (including return from ad activities).
+     * Restarts ambient music unless the game itself is paused.
+     */
+    fun onActivityResumed() {
+        when (gameState) {
+            is GameState.Paused -> { /* stay silent while the game is paused */ }
+            is GameState.Ready -> musicManager.play(AudioConfig.trackForMode(isZen = false))
+            else -> musicManager.resume()
+        }
     }
 
     // ── Ad Reward Methods ──

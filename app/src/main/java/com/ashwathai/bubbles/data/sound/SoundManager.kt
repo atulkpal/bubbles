@@ -9,6 +9,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
 import com.ashwathai.bubbles.R
+import com.ashwathai.bubbles.domain.model.AudioConfig
 import com.ashwathai.bubbles.ui.theme.luxury.LuxuryHaptics
 import kotlin.random.Random
 
@@ -34,12 +35,15 @@ class SoundManager(private val context: Context) {
     private var bossSound: Int = -1
     private var crackSound: Int = -1
     private var coinSound: Int = -1
+    private var clickSound: Int = -1
     private var soundsLoaded = 0
-    private val totalSounds = 11
+    private val totalSounds = 13
 
     var soundEnabled = true
         private set
     var hapticsEnabled = true
+        private set
+    var sfxVolume: Float = AudioConfig.DEFAULT_SFX_VOLUME
         private set
 
     private val vibrator: Vibrator? by lazy {
@@ -64,6 +68,10 @@ class SoundManager(private val context: Context) {
         hapticsEnabled = enabled
     }
 
+    fun setSfxVolume(volume: Float) {
+        sfxVolume = AudioConfig.coerceVolume(volume)
+    }
+
     private fun loadSounds() {
         soundPool.setOnLoadCompleteListener { _, soundId, status ->
             if (status == 0) {
@@ -73,18 +81,19 @@ class SoundManager(private val context: Context) {
             }
         }
 
-        popSounds[0] = soundPool.load(context, R.raw.pop, 1)
-        popSounds[1] = soundPool.load(context, R.raw.split, 1)
-        popSounds[2] = soundPool.load(context, R.raw.pop, 1)
-        bigPopSound = soundPool.load(context, R.raw.levelup, 1)
+        popSounds[0] = soundPool.load(context, R.raw.pop1, 1)
+        popSounds[1] = soundPool.load(context, R.raw.pop2, 1)
+        popSounds[2] = soundPool.load(context, R.raw.pop3, 1)
+        bigPopSound = soundPool.load(context, R.raw.bigpop, 1)
         splitSound = soundPool.load(context, R.raw.split, 1)
         powerUpSound = soundPool.load(context, R.raw.powerup, 1)
         levelUpSound = soundPool.load(context, R.raw.levelup, 1)
         gameOverSound = soundPool.load(context, R.raw.gameover, 1)
-        comboSound = soundPool.load(context, R.raw.powerup, 1)
-        bossSound = soundPool.load(context, R.raw.gameover, 1)
-        crackSound = soundPool.load(context, R.raw.pop, 1)
-        coinSound = soundPool.load(context, R.raw.powerup, 1)
+        comboSound = soundPool.load(context, R.raw.combo, 1)
+        bossSound = soundPool.load(context, R.raw.boss, 1)
+        crackSound = soundPool.load(context, R.raw.crack, 1)
+        coinSound = soundPool.load(context, R.raw.coin, 1)
+        clickSound = soundPool.load(context, R.raw.click, 1)
     }
 
     fun playPop() {
@@ -127,10 +136,15 @@ class SoundManager(private val context: Context) {
         play(gameOverSound, 1f, 1f)
     }
 
+    fun playClick() {
+        play(clickSound, 0.8f, 1f)
+    }
+
     private fun play(soundId: Int, volume: Float, rate: Float) {
         if (!soundEnabled) return
         if (soundId != -1) {
-            soundPool.play(soundId, volume, volume, 1, 0, rate)
+            val v = (volume * sfxVolume).coerceIn(0f, 1f)
+            soundPool.play(soundId, v, v, 1, 0, rate)
         }
     }
 

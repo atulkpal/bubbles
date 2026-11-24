@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,6 +36,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -116,6 +118,8 @@ fun LuxuryToggle(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            // Whole row is the touch target (>= 48dp) — the switch itself is only 52x30dp.
+            .clickable { onToggle() }
             .padding(vertical = LuxurySpacing.SM),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -126,7 +130,7 @@ fun LuxuryToggle(
             modifier = Modifier.weight(1f)
         )
         Spacer(modifier = Modifier.width(12.dp))
-        LuxurySwitch(checked = checked, onToggle = onToggle)
+        LuxurySwitch(checked = checked, onToggle = {})
     }
 }
 
@@ -220,6 +224,49 @@ fun LuxuryTimerRing(
             sweepAngle = sweep,
             useCenter = false,
             style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke.toPx(), cap = StrokeCap.Round)
+        )
+    }
+}
+
+@Composable
+fun LuxurySlider(
+    label: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    testTag: String? = null
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = LuxurySpacing.SM)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = label,
+                color = Color.White,
+                style = LuxuryTypography.BodyLarge,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "${(value * 100).toInt()}%",
+                color = LuxuryColors.Gold400,
+                style = LuxuryTypography.LabelLarge
+            )
+        }
+        androidx.compose.material3.Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = 0f..1f,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .then(if (testTag != null) Modifier.testTag(testTag) else Modifier),
+            colors = androidx.compose.material3.SliderDefaults.colors(
+                thumbColor = LuxuryColors.Gold400,
+                activeTrackColor = LuxuryColors.Gold400,
+                inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+            )
         )
     }
 }

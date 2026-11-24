@@ -93,8 +93,10 @@ import androidx.compose.ui.unit.sp
 import com.ashwathai.bubbles.data.local.EconomyRepositoryImpl
 import com.ashwathai.bubbles.data.local.ScoreRepositoryImpl
 import com.ashwathai.bubbles.data.local.SettingsRepositoryImpl
+import com.ashwathai.bubbles.data.sound.MusicManager
 import com.ashwathai.bubbles.data.sound.SoundManager
 import com.ashwathai.bubbles.di.AppModule
+import com.ashwathai.bubbles.domain.model.Achievements
 import com.ashwathai.bubbles.domain.model.Bubble
 import com.ashwathai.bubbles.domain.model.BubbleSkin
 import com.ashwathai.bubbles.domain.model.BubbleSkins
@@ -112,6 +114,7 @@ import com.ashwathai.bubbles.domain.repository.EconomyRepository
 import com.ashwathai.bubbles.domain.repository.ScoreRepository
 import com.ashwathai.bubbles.domain.repository.SettingsRepository
 import com.ashwathai.bubbles.ui.game.GameViewModel
+import com.ashwathai.bubbles.ui.settings.SettingsScreen
 import com.ashwathai.bubbles.ui.theme.BubblesTheme
 import com.ashwathai.bubbles.ui.theme.luxury.GlassSurface
 import com.ashwathai.bubbles.ui.theme.luxury.LuxuryButton
@@ -149,12 +152,16 @@ class MainActivity : ComponentActivity() {
     private val soundManager: SoundManager by lazy {
         AppModule.provideSoundManager(this)
     }
+    private val musicManager: MusicManager by lazy {
+        AppModule.provideMusicManager(this)
+    }
     private val gameViewModel: GameViewModel by lazy {
         GameViewModel(
             scoreRepository = scoreRepository,
             settingsRepository = settingsRepository,
             economyRepository = economyRepository,
             soundManager = soundManager,
+            musicManager = musicManager,
             spawnBubblesUseCase = AppModule.provideSpawnBubblesUseCase(),
             updateBubblesUseCase = AppModule.provideUpdateBubblesUseCase(),
             handleTapUseCase = AppModule.provideHandleTapUseCase(),
@@ -176,8 +183,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        musicManager.pause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        gameViewModel.onActivityResumed()
+    }
+
     override fun onDestroy() {
         soundManager.release()
+        musicManager.release()
         super.onDestroy()
     }
 }
@@ -456,6 +474,15 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
             }
         }
 
+        // ── Achievement unlock chip (gold glass moment) ──
+        gameViewModel.newlyUnlockedAchievement?.let { achievementId ->
+            AchievementUnlockChip(
+                achievementId = achievementId,
+                reducedMotion = gameViewModel.reducedMotion,
+                onDismiss = { gameViewModel.dismissAchievementChip() }
+            )
+        }
+
         if (showSettings) {
             val activity = LocalContext.current as? android.app.Activity
             val adsRemoved by BillingManager.adsRemoved.collectAsStateWithLifecycle()
@@ -463,10 +490,16 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                 theme = theme,
                 economy = economy,
                 soundEnabled = gameViewModel.soundEnabled,
+                musicEnabled = gameViewModel.musicEnabled,
+                sfxVolume = gameViewModel.sfxVolume,
+                musicVolume = gameViewModel.musicVolume,
                 hapticsEnabled = gameViewModel.hapticsEnabled,
                 reducedMotion = gameViewModel.reducedMotion,
                 adsRemoved = adsRemoved,
                 onToggleSound = { gameViewModel.toggleSound() },
+                onToggleMusic = { gameViewModel.toggleMusic() },
+                onSfxVolumeChange = { gameViewModel.updateSfxVolume(it) },
+                onMusicVolumeChange = { gameViewModel.updateMusicVolume(it) },
                 onToggleHaptics = { gameViewModel.toggleHaptics() },
                 onToggleReducedMotion = { gameViewModel.toggleReducedMotion() },
                 onUpgrade = { gameViewModel.upgradePowerUp(it) },
@@ -752,23 +785,6 @@ private fun LevelChip(
     }
 }
 
-@Composable
-private fun AboutLinkChip(label: String, url: String) {
-    val context = LocalContext.current
-    GlassSurface(shape = RoundedCornerShape(LuxuryRadius.Pill)) {
-        Box(
-            modifier = Modifier
-                .clickable { openUrl(context, url) }
-                .padding(horizontal = 14.dp, vertical = 8.dp)
-        ) {
-            Text(
-                label,
-                style = LuxuryTypography.LabelMedium,
-                color = LuxuryColors.Gold300
-            )
-        }
-    }
-}
 
 @Composable
 fun LogoOrb(reducedMotion: Boolean = false) {
@@ -1021,6 +1037,79 @@ fun GameScreen(
                 reducedMotion = reducedMotion,
                 onDismiss = onDismissTutorial
             )
+        }
+    }
+}
+
+/**
+ * Achievement unlock moment — gold glass chip springing in at top-center with
+ * the badge name and coin reward. Auto-dismisses. Static appearance under
+ * reduced motion (no spring).
+ */
+@Composable
+fun AchievementUnlockChip(
+    achievementId: String,
+    reducedMotion: Boolean,
+    onDismiss: () -> Unit
+) {
+    val achievement = Achievements.fromId(achievementId) ?: return
+
+    val entrance = remember { androidx.compose.animation.core.Animatable(if (reducedMotion) 1f else 0f) }
+    LaunchedEffect(achievementId) {
+        if (!reducedMotion) {
+            entrance.animateTo(
+                1.12f,
+                spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+            )
+            entrance.animateTo(1f, spring())
+        } else {
+            entrance.snapTo(1f)
+        }
+        kotlinx.coroutines.delay(3500)
+        onDismiss()
+    }
+
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        GlassSurface(
+            shape = RoundedCornerShape(LuxuryRadius.Pill),
+            modifier = Modifier
+                .padding(top = 64.dp)
+                .graphicsLayer {
+                    scaleX = entrance.value
+                    scaleY = entrance.value
+                    alpha = entrance.value.coerceIn(0f, 1f)
+                }
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = LuxuryIcons.Star,
+                    contentDescription = "Achievement unlocked",
+                    tint = LuxuryColors.Gold400,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        "ACHIEVEMENT UNLOCKED",
+                        style = LuxuryTypography.LabelSmall,
+                        color = LuxuryColors.Gold300
+                    )
+                    Text(
+                        achievement.title,
+                        style = LuxuryTypography.LabelLarge,
+                        color = Color.White
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "+${achievement.rewardCoins}",
+                    style = LuxuryTypography.LabelMedium,
+                    color = LuxuryColors.Gold400
+                )
+            }
         }
     }
 }
@@ -1614,522 +1703,6 @@ fun GameOverScreen(
                 Spacer(modifier = Modifier.height(LuxurySpacing.SM))
             }
         }
-    }
-}
-
-@Composable
-fun SettingsScreen(
-    theme: ThemePalette,
-    economy: EconomyState,
-    soundEnabled: Boolean,
-    hapticsEnabled: Boolean,
-    reducedMotion: Boolean,
-    adsRemoved: Boolean,
-    onToggleSound: () -> Unit,
-    onToggleHaptics: () -> Unit,
-    onToggleReducedMotion: () -> Unit,
-    onUpgrade: (String) -> Unit,
-    onSelectSkin: (String) -> Unit,
-    onSelectTheme: (String) -> Unit,
-    onPrestige: () -> Unit,
-    onClose: () -> Unit,
-    onTrySkin: ((String) -> Unit)? = null,
-    onRemoveAds: (() -> Unit)? = null
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.88f)),
-        contentAlignment = Alignment.Center
-    ) {
-        GlassSurface(shape = RoundedCornerShape(LuxuryRadius.XL),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
-                    .verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "SETTINGS",
-                        style = LuxuryTypography.DisplaySmall,
-                        color = Color.White,
-                        modifier = Modifier.weight(1f)
-                    )
-                    GlassSurface(
-                        shape = RoundedCornerShape(LuxuryRadius.Pill),
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable { onClose() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Close settings",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(LuxurySpacing.SM))
-                GlassSurface(
-                    shape = RoundedCornerShape(LuxuryRadius.Pill),
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = LuxuryIcons.Coin,
-                            contentDescription = null,
-                            tint = LuxuryColors.Gold400,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            "${economy.coins} coins",
-                            style = LuxuryTypography.LabelLarge,
-                            color = LuxuryColors.Gold400
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(LuxurySpacing.MD))
-
-                LuxurySectionTitle("Audio & Haptics", LuxuryIcons.Volume)
-                GlassSurface(
-                    shape = RoundedCornerShape(LuxuryRadius.MD)
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        LuxuryToggle("Sound", soundEnabled, onToggleSound)
-                        LuxuryToggle("Haptics", hapticsEnabled, onToggleHaptics)
-                        LuxuryToggle("Reduced Motion", reducedMotion, onToggleReducedMotion)
-                    }
-                }
-
-                // ── Remove Ads ──
-                if (!adsRemoved && onRemoveAds != null) {
-                    Spacer(modifier = Modifier.height(LuxurySpacing.MD))
-                    LuxurySectionTitle("Premium", LuxuryIcons.Sparkle)
-                    GlassSurface(
-                        shape = RoundedCornerShape(LuxuryRadius.MD),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                "Remove All Ads",
-                                style = LuxuryTypography.HeadlineSmall,
-                                color = LuxuryColors.Gold400
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "No banners, no interstitials, no rewarded ads. Rewards grant instantly.",
-                                style = LuxuryTypography.BodySmall,
-                                color = Color.White.copy(alpha = 0.7f),
-                                textAlign = TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(LuxurySpacing.SM))
-                            LuxuryButton(
-                                text = "REMOVE ADS",
-                                onClick = onRemoveAds,
-                                modifier = Modifier.fillMaxWidth(),
-                                icon = LuxuryIcons.Sparkle,
-                                height = 48.dp
-                            )
-                        }
-                    }
-                }
-                if (adsRemoved) {
-                    Spacer(modifier = Modifier.height(LuxurySpacing.MD))
-                    LuxurySectionTitle("Premium", LuxuryIcons.Sparkle)
-                    GlassSurface(
-                        shape = RoundedCornerShape(LuxuryRadius.MD),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = null,
-                                tint = LuxuryColors.Gold400,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "Ads removed · Premium",
-                                style = LuxuryTypography.BodyLarge,
-                                color = LuxuryColors.Gold400
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(LuxurySpacing.MD))
-                LuxurySectionTitle("Upgrades", LuxuryIcons.Bolt)
-                GlassSurface(
-                    shape = RoundedCornerShape(LuxuryRadius.MD)
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        UpgradeRow(
-                            icon = LuxuryIcons.Timer,
-                            label = "Slow-Mo",
-                            detail = "Lv ${economy.slowMoLevel} · ${economy.slowMoDurationMs / 1000}s",
-                            currentLevel = economy.slowMoLevel,
-                            coins = economy.coins,
-                            onUpgrade = { onUpgrade("slowMo") }
-                        )
-                        UpgradeRow(
-                            icon = LuxuryIcons.Snowflake,
-                            label = "Freeze",
-                            detail = "Lv ${economy.freezeLevel} · ${economy.freezeDurationMs / 1000}s",
-                            currentLevel = economy.freezeLevel,
-                            coins = economy.coins,
-                            onUpgrade = { onUpgrade("freeze") }
-                        )
-                        UpgradeRow(
-                            icon = LuxuryIcons.Burst,
-                            label = "Multi-Pop",
-                            detail = "Lv ${economy.multiPopLevel} · ${economy.multiPopRadius.toInt()}px",
-                            currentLevel = economy.multiPopLevel,
-                            coins = economy.coins,
-                            onUpgrade = { onUpgrade("multiPop") }
-                        )
-                        UpgradeRow(
-                            icon = LuxuryIcons.Prism,
-                            label = "Prism",
-                            detail = "Lv ${economy.prismLevel} · x${(economy.prismBoost * 100).toInt()}%",
-                            currentLevel = economy.prismLevel,
-                            coins = economy.coins,
-                            onUpgrade = { onUpgrade("prism") }
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(LuxurySpacing.MD))
-                LuxurySectionTitle("Skins", LuxuryIcons.Layers)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    BubbleSkins.all.forEach { s ->
-                        val locked = s.needsPrestige && economy.prestigeLevel < 1
-                        val selected = s.name == economy.skin
-                        SkinCard(
-                            skin = s,
-                            locked = locked,
-                            selected = selected,
-                            onClick = { if (!locked) onSelectSkin(s.name) },
-                            onTryAd = if (locked && onTrySkin != null) {{ onTrySkin(s.name) }} else null
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(LuxurySpacing.SM))
-                LuxurySectionTitle("Themes", LuxuryIcons.Tint)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    BubbleThemes.all.forEach { t ->
-                        ThemeCard(
-                            themePalette = t,
-                            selected = t.name == economy.theme,
-                            onClick = { onSelectTheme(t.name) }
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(LuxurySpacing.MD))
-                LuxurySectionTitle("Stats", LuxuryIcons.Chart)
-                GlassSurface(
-                    shape = RoundedCornerShape(LuxuryRadius.MD)
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        StatRow("Lifetime pops", "${economy.lifetimePops}")
-                        StatRow("Best combo", "x${economy.maxCombo}")
-                        StatRow("Games played", "${economy.gamesPlayed}")
-                        StatRow("Prestige", "Lv ${economy.prestigeLevel}")
-                        StatRow("Daily best", "${economy.dailyBest}")
-                    }
-                }
-
-                if (economy.prestigeLevel < 1) {
-                    Spacer(modifier = Modifier.height(LuxurySpacing.MD))
-                    LuxuryButton(
-                        text = "PRESTIGE · GOLD SKIN + 2X COINS",
-                        onClick = onPrestige,
-                        modifier = Modifier.fillMaxWidth(),
-                        primary = false,
-                        icon = LuxuryIcons.Sparkle,
-                        height = 48.dp
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(LuxurySpacing.MD))
-                LuxurySectionTitle("About", LuxuryIcons.Lotus)
-                GlassSurface(
-                    shape = RoundedCornerShape(LuxuryRadius.MD),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            "Bubbles",
-                            style = LuxuryTypography.HeadlineSmall,
-                            color = Color.White
-                        )
-                        Text(
-                            "v$APP_VERSION",
-                            style = LuxuryTypography.LabelMedium,
-                            color = LuxuryColors.Gold300
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "A premium bubble-popping stress buster — pop, breathe, repeat.",
-                            style = LuxuryTypography.BodySmall,
-                            color = Color.White.copy(alpha = 0.7f),
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(LuxurySpacing.SM))
-                        Text(
-                            "© 2026 Ashwath AI. All rights reserved.",
-                            style = LuxuryTypography.LabelSmall,
-                            color = Color.White.copy(alpha = 0.55f),
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(LuxurySpacing.SM))
-                        Row(horizontalArrangement = Arrangement.spacedBy(LuxurySpacing.SM)) {
-                            AboutLinkChip("ABOUT", "https://atulkpal.github.io/bubbles/about.html")
-                            AboutLinkChip("PRIVACY", "https://atulkpal.github.io/bubbles/privacy.html")
-                            AboutLinkChip("DELETE DATA", "https://atulkpal.github.io/bubbles/data-deletion.html")
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(LuxurySpacing.MD))
-                LuxuryButton(
-                    text = "CLOSE",
-                    onClick = onClose,
-                    modifier = Modifier.fillMaxWidth(),
-                    icon = Icons.Default.Close,
-                    height = 48.dp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun UpgradeRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    detail: String,
-    currentLevel: Int,
-    coins: Int,
-    onUpgrade: () -> Unit
-) {
-    val maxed = currentLevel >= EconomyConfig.UPGRADE_MAX
-    val affordable = coins >= EconomyConfig.UPGRADE_COST
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(
-            modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = LuxuryColors.Gold400,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Column {
-                Text(label, style = LuxuryTypography.BodyLarge, color = Color.White)
-                Text(detail, style = LuxuryTypography.BodySmall, color = Color.White.copy(alpha = 0.7f))
-            }
-        }
-        Spacer(modifier = Modifier.width(10.dp))
-        GlassSurface(
-            shape = RoundedCornerShape(LuxuryRadius.SM),
-            modifier = Modifier
-                .height(36.dp)
-                .clickable(enabled = !maxed && affordable) { onUpgrade() }
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                if (!maxed) {
-                    Icon(
-                        imageVector = LuxuryIcons.Coin,
-                        contentDescription = null,
-                        tint = LuxuryColors.Gold400,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                }
-                Text(
-                    text = if (maxed) "MAX" else "${EconomyConfig.UPGRADE_COST}",
-                    style = LuxuryTypography.LabelMedium,
-                    color = if (maxed) Color.White.copy(alpha = 0.4f) else LuxuryColors.Gold400
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun SkinCard(skin: BubbleSkin, locked: Boolean, selected: Boolean, onClick: () -> Unit, onTryAd: (() -> Unit)? = null) {
-    Column(
-        modifier = Modifier
-            .width(88.dp)
-            .background(
-                if (selected) LuxuryColors.Ink900 else LuxuryColors.Ink900.copy(alpha = 0.6f),
-                RoundedCornerShape(LuxuryRadius.MD)
-            )
-            .then(
-                if (selected) Modifier.border(
-                    width = 1.5.dp,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.15f),
-                            Color.White.copy(alpha = 0.04f),
-                            Color.Transparent
-                        )
-                    ),
-                    shape = RoundedCornerShape(LuxuryRadius.MD)
-                ) else Modifier
-            )
-            .clickable(enabled = !locked) { onClick() }
-            .padding(vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .background(
-                    Brush.radialGradient(
-                        listOf(skin.palette.first(), skin.palette.first().copy(alpha = 0.6f))
-                    ),
-                    CircleShape
-                )
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (locked) {
-                Icon(
-                    imageVector = Icons.Default.Lock,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.6f),
-                    modifier = Modifier.size(11.dp)
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-            }
-            Text(
-                text = skin.name,
-                style = LuxuryTypography.LabelSmall,
-                color = if (selected) LuxuryColors.Gold300 else Color.White.copy(alpha = 0.7f)
-            )
-        }
-        if (locked && onTryAd != null) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "TRY",
-                style = LuxuryTypography.LabelSmall,
-                color = LuxuryColors.Gold400,
-                modifier = Modifier
-                    .clickable { onTryAd() }
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun ThemeCard(themePalette: ThemePalette, selected: Boolean, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .width(88.dp)
-            .background(
-                if (selected) LuxuryColors.Ink900 else LuxuryColors.Ink900.copy(alpha = 0.6f),
-                RoundedCornerShape(LuxuryRadius.MD)
-            )
-            .then(
-                if (selected) Modifier.border(
-                    width = 1.5.dp,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.15f),
-                            Color.White.copy(alpha = 0.04f),
-                            Color.Transparent
-                        )
-                    ),
-                    shape = RoundedCornerShape(LuxuryRadius.MD)
-                ) else Modifier
-            )
-            .clickable { onClick() }
-            .padding(vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .background(
-                    Brush.verticalGradient(listOf(themePalette.top, themePalette.bottom)),
-                    CircleShape
-                )
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = themePalette.name,
-            style = LuxuryTypography.LabelSmall,
-            color = if (selected) LuxuryColors.Gold300 else Color.White.copy(alpha = 0.7f)
-        )
-    }
-}
-
-@Composable
-fun StatRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label, style = LuxuryTypography.BodyMedium, color = Color.White.copy(alpha = 0.7f))
-        Text(value, style = LuxuryTypography.BodyMedium, fontWeight = FontWeight.Bold, color = Color.White)
     }
 }
 

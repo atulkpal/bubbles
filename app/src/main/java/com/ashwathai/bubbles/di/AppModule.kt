@@ -7,6 +7,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.ashwathai.bubbles.data.local.EconomyRepositoryImpl
 import com.ashwathai.bubbles.data.local.ScoreRepositoryImpl
 import com.ashwathai.bubbles.data.local.SettingsRepositoryImpl
+import com.ashwathai.bubbles.data.sound.MusicManager
 import com.ashwathai.bubbles.data.sound.SoundManager
 import com.ashwathai.bubbles.domain.repository.EconomyRepository
 import com.ashwathai.bubbles.domain.repository.ScoreRepository
@@ -45,6 +46,10 @@ object AppModule {
 
     fun provideSoundManager(context: Context): SoundManager {
         return SoundManager(context)
+    }
+
+    fun provideMusicManager(context: Context): MusicManager {
+        return MusicManager(context)
     }
 
     fun provideSpawnBubblesUseCase(): SpawnBubblesUseCase {

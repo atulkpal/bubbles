@@ -25,6 +25,12 @@ object LuxuryMotion {
         dampingRatio = dampingRatio,
         stiffness = stiffness
     )
+
+    /** Snappy no-bounce spring for press-scale feedback. */
+    val Press = spring<Float>(
+        dampingRatio = Spring.DampingRatioNoBouncy,
+        stiffness = Spring.StiffnessMedium
+    )
 }
 
 object LuxuryHaptics {

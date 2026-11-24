@@ -4,6 +4,8 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import com.ashwathai.bubbles.domain.model.AudioConfig
 import com.ashwathai.bubbles.domain.repository.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +33,19 @@ class SettingsRepositoryImpl(private val dataStore: DataStore<Preferences>) : Se
     private val _adsRemoved = MutableStateFlow(false)
     override val adsRemoved: kotlinx.coroutines.flow.StateFlow<Boolean> = _adsRemoved.asStateFlow()
 
+    private val MUSIC_KEY = booleanPreferencesKey("music_enabled")
+    private val SFX_VOLUME_KEY = floatPreferencesKey("sfx_volume")
+    private val MUSIC_VOLUME_KEY = floatPreferencesKey("music_volume")
+
+    private val _musicEnabled = MutableStateFlow(true)
+    override val musicEnabled: kotlinx.coroutines.flow.StateFlow<Boolean> = _musicEnabled.asStateFlow()
+
+    private val _sfxVolume = MutableStateFlow(AudioConfig.DEFAULT_SFX_VOLUME)
+    override val sfxVolume: kotlinx.coroutines.flow.StateFlow<Float> = _sfxVolume.asStateFlow()
+
+    private val _musicVolume = MutableStateFlow(AudioConfig.DEFAULT_MUSIC_VOLUME)
+    override val musicVolume: kotlinx.coroutines.flow.StateFlow<Float> = _musicVolume.asStateFlow()
+
     init {
         loadSettings()
     }
@@ -43,6 +58,9 @@ class SettingsRepositoryImpl(private val dataStore: DataStore<Preferences>) : Se
                 _hapticsEnabled.value = prefs[HAPTICS_KEY] ?: true
                 _reducedMotion.value = prefs[REDUCED_MOTION_KEY] ?: false
                 _adsRemoved.value = prefs[ADS_REMOVED_KEY] ?: false
+                _musicEnabled.value = prefs[MUSIC_KEY] ?: true
+                _sfxVolume.value = AudioConfig.coerceVolume(prefs[SFX_VOLUME_KEY] ?: AudioConfig.DEFAULT_SFX_VOLUME)
+                _musicVolume.value = AudioConfig.coerceVolume(prefs[MUSIC_VOLUME_KEY] ?: AudioConfig.DEFAULT_MUSIC_VOLUME)
             }
         }
     }
@@ -73,5 +91,28 @@ class SettingsRepositoryImpl(private val dataStore: DataStore<Preferences>) : Se
             preferences[ADS_REMOVED_KEY] = removed
         }
         _adsRemoved.value = removed
+    }
+
+    override suspend fun setMusicEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[MUSIC_KEY] = enabled
+        }
+        _musicEnabled.value = enabled
+    }
+
+    override suspend fun setSfxVolume(volume: Float) {
+        val coerced = AudioConfig.coerceVolume(volume)
+        dataStore.edit { preferences ->
+            preferences[SFX_VOLUME_KEY] = coerced
+        }
+        _sfxVolume.value = coerced
+    }
+
+    override suspend fun setMusicVolume(volume: Float) {
+        val coerced = AudioConfig.coerceVolume(volume)
+        dataStore.edit { preferences ->
+            preferences[MUSIC_VOLUME_KEY] = coerced
+        }
+        _musicVolume.value = coerced
     }
 }

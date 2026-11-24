@@ -29,8 +29,9 @@ Bubbles follows **Clean Architecture** with **MVVM** pattern, separating concern
 |-----------|------|---------|
 | `ScoreRepositoryImpl` | `data/local/ScoreRepositoryImpl.kt` | Persists high scores, zen best, games played, and highest cleared adventure level via DataStore |
 | `EconomyRepositoryImpl` | `data/local/EconomyRepositoryImpl.kt` | Persists coins, owned skins/themes |
-| `SettingsRepositoryImpl` | `data/local/SettingsRepositoryImpl.kt` | Persists sound, haptics, difficulty preferences |
-| `SoundManager` | `data/sound/SoundManager.kt` | SoundPool-based sound effects |
+| `SettingsRepositoryImpl` | `data/local/SettingsRepositoryImpl.kt` | Persists sound, music, volumes, haptics, difficulty preferences |
+| `SoundManager` | `data/sound/SoundManager.kt` | SoundPool-based sound effects (13 distinct CC0 clips + master SFX volume) |
+| `MusicManager` | `data/sound/MusicManager.kt` | Dual-MediaPlayer ambient music with 1.5s crossfade (adventure/zen loops) |
 
 ### DI Layer (`di/`)
 
@@ -66,7 +67,7 @@ The `ui/theme/luxury/` package implements the "Midnight Glass" design language:
 | `LuxuryTypography.kt` | Cormorant (serif display) + Montserrat (sans body) text styles |
 | `LuxuryMotion.kt` | Spring presets, duration constants, reduced-motion helpers |
 | `GlassSurface.kt` | Reusable glass card component (gradient fill, hairline border, blur) |
-| `LuxuryComponents.kt` | Buttons, toggles, stat displays, timer ring, section headers |
+| `LuxuryComponents.kt` | Buttons, toggles, sliders, stat displays, timer ring, section headers |
 | `LuxuryIcons.kt` | Vector Path icons (bomb, prism, ice, crown, sparkle) replacing emoji |
 
 ### Glass Surface Rendering

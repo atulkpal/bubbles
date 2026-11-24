@@ -36,6 +36,7 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
     private val DAILY_DATE_KEY = stringPreferencesKey("eco_daily_date")
     private val DAILY_BEST_KEY = intPreferencesKey("eco_daily_best")
     private val SEEN_TYPES_KEY = stringSetPreferencesKey("eco_seen_bubble_types")
+    private val ACHIEVEMENTS_KEY = stringSetPreferencesKey("eco_unlocked_achievements")
 
     private val _state = MutableStateFlow(EconomyState())
     override val state: kotlinx.coroutines.flow.StateFlow<EconomyState> = _state.asStateFlow()
@@ -61,7 +62,8 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
                 prestigeLevel = prefs[PRESTIGE_KEY] ?: 0,
                 dailyDate = prefs[DAILY_DATE_KEY] ?: "",
                 dailyBest = prefs[DAILY_BEST_KEY] ?: 0,
-                seenBubbleTypes = prefs[SEEN_TYPES_KEY] ?: emptySet()
+                seenBubbleTypes = prefs[SEEN_TYPES_KEY] ?: emptySet(),
+                unlockedAchievements = prefs[ACHIEVEMENTS_KEY] ?: emptySet()
             )
         }
     }
@@ -157,5 +159,13 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
         val updated = _state.value.seenBubbleTypes + type
         dataStore.edit { it[SEEN_TYPES_KEY] = updated }
         _state.value = _state.value.copy(seenBubbleTypes = updated)
+    }
+
+    override suspend fun unlockAchievements(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        val updated = _state.value.unlockedAchievements + ids
+        if (updated == _state.value.unlockedAchievements) return
+        dataStore.edit { it[ACHIEVEMENTS_KEY] = updated }
+        _state.value = _state.value.copy(unlockedAchievements = updated)
     }
 }
