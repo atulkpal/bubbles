@@ -324,9 +324,9 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.height(LuxurySpacing.SM))
                         Row(horizontalArrangement = Arrangement.spacedBy(LuxurySpacing.SM)) {
-                            AboutLinkChip("ABOUT", "https://atulkpal.github.io/bubbles/about.html")
-                            AboutLinkChip("PRIVACY", "https://atulkpal.github.io/bubbles/privacy.html")
-                            AboutLinkChip("DELETE DATA", "https://atulkpal.github.io/bubbles/data-deletion.html")
+                            AboutLinkChip("ABOUT", "https://bubbles.ashwathai.online/about.html")
+                            AboutLinkChip("PRIVACY", "https://bubbles.ashwathai.online/privacy.html")
+                            AboutLinkChip("DELETE DATA", "https://bubbles.ashwathai.online/data-deletion.html")
                         }
                     }
                 }

@@ -114,7 +114,7 @@ Welcome, Agent! This document is your single source of truth for understanding t
 
 ### Play Store & Web
 17. **Play Store Scripts:** Automated upload, screenshot management, closed testing promotion.
-18. **Website:** Landing page, privacy policy, about, data deletion — source in `website/`, deployed via `.github/workflows/deploy-website.yml` to `https://atulkpal.github.io/bubbles/`. **Note (2026-09-08):** repo visibility was flipped private→public, which unpublished Pages once; it was re-enabled via API (`build_type: workflow`) and redeployed — if the site ever 404s again, re-run that Pages API call + `gh workflow run deploy-website.yml`. Floating decorative bubbles across all pages with `position: fixed` and radial-gradient edge fade mask.
+18. **Website:** Landing page, privacy policy, about, data deletion — source in `website/`, deployed via `.github/workflows/deploy-website.yml` to GitHub Pages at **`https://bubbles.ashwathai.online/`** (custom domain since 2026-11-24: Cloudflare CNAME `bubbles` → `atulkpal.github.io`, DNS only; old github.io URL redirects). **Note (2026-09-08):** repo visibility was flipped private→public, which unpublished Pages once; it was re-enabled via API (`build_type: workflow`) and redeployed — if the site ever 404s again, re-run that Pages API call + `gh workflow run deploy-website.yml`. Floating decorative bubbles across all pages with `position: fixed` and radial-gradient edge fade mask.
 19. **Repository Documentation:** Architecture, setup guide, contributing guidelines, changelog.
 
 ---

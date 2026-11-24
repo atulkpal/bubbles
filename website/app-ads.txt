@@ -1,6 +1,6 @@
 # app-ads.txt — Hushpop (com.ashwathai.bubbles)
 # Same Unity LevelPlay publisher account as TradeLab; authorized sellers copied 2026-11-24.
-# ownerdomain= is added once the site moves to its own domain.
+ownerdomain=bubbles.ashwathai.online
 themediagrid.com, falino, RESELLER, 9fac4a4a87c2a44f
 themediagrid.com, b8n9yh, RESELLER, 35d5010d7789b49d
 themediagrid.com, jvhg38, RESELLER, 9fac4a4a87c2a44f

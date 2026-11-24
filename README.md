@@ -94,7 +94,7 @@ bubbles/
 
 The project website is auto-deployed to GitHub Pages via GitHub Actions:
 
-🔗 **[https://atulkpal.github.io/bubbles/](https://atulkpal.github.io/bubbles/)**
+🔗 **[https://bubbles.ashwathai.online/](https://bubbles.ashwathai.online/)** (old address atulkpal.github.io/bubbles redirects)
 
 Source files live in `website/`. The workflow (`.github/workflows/deploy-website.yml`) deploys on every push to `master`.
 
