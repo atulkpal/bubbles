@@ -19,10 +19,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  # Two jobs (GitHub's standard Pages pattern): the deploy job starts only after the
+  # artifact upload has fully finished, avoiding "No artifacts named github-pages".
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,6 +35,13 @@ jobs:
         with:
           path: 'website'
 
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
