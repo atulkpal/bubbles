@@ -81,8 +81,8 @@ class GameViewModel(
     /** Float mode (the calm default, formerly Zen): few, slow, large rising bubbles. */
     private val zenLevelConfig = LevelConfig(
         level = 0,
-        maxBubbles = EconomyConfig.FLOAT_MAX_BUBBLES,
-        spawnInterval = EconomyConfig.FLOAT_SPAWN_INTERVAL,
+        maxBubbles = if (com.ashwathai.bubbles.CaptureMode.enabled) 12 else EconomyConfig.FLOAT_MAX_BUBBLES,
+        spawnInterval = if (com.ashwathai.bubbles.CaptureMode.enabled) 0.95f else EconomyConfig.FLOAT_SPAWN_INTERVAL,
         baseSpeed = FloatMotion.RISE_SPEED,
         powerUpChance = 0f,
         timeLimit = 99999f
@@ -91,7 +91,8 @@ class GameViewModel(
 
     /** The soap in use (selected if owned or today's free soap; otherwise the starter). */
     val activeSoap: Soap
-        get() = SoapShelf.effectiveSoap(economy.selectedSoap, economy.unlockedSoaps, todayDate(), isSupporter)
+        get() = com.ashwathai.bubbles.CaptureMode.soapId?.let { Soaps.byId(it) }
+            ?: SoapShelf.effectiveSoap(economy.selectedSoap, economy.unlockedSoaps, todayDate(), isSupporter)
 
     /** Supporter Pack owner (the former Remove Ads purchase): ad-free + Moonlit Pearl soap. */
     var isSupporter by mutableStateOf(false)
@@ -454,7 +455,8 @@ class GameViewModel(
 
     /** True until the player has blown their first bubble: drives the one-time hint. */
     val showBlowHint: Boolean
-        get() = isFloat && BlowMechanics.HINT_SEEN_MARKER !in economy.seenBubbleTypes &&
+        get() = isFloat && !com.ashwathai.bubbles.CaptureMode.enabled &&
+            BlowMechanics.HINT_SEEN_MARKER !in economy.seenBubbleTypes &&
             (economy.popsOn(todayDate()) >= 5 || elapsedSec > 20f)
 
     /**

@@ -109,7 +109,9 @@ class SoundManager(private val context: Context) {
 
     /** Soft wet soap pop; [rate] comes from SoapPopPitch (size + pentatonic step). */
     fun playSoapPop(rate: Float) {
-        play(soapPops[Random.nextInt(soapPops.size)], 0.9f, rate)
+        val i = Random.nextInt(soapPops.size)
+        com.ashwathai.bubbles.CaptureMode.log("POP", "sample=${i + 1} rate=$rate vol=0.9")
+        play(soapPops[i], 0.9f, rate)
     }
 
     fun playPop() {
@@ -203,6 +205,7 @@ class SoundManager(private val context: Context) {
         stopBlow()
         if (!soundEnabled || blowLoopSound == -1) return
         val v = (0.55f * sfxVolume).coerceIn(0f, 1f)
+        com.ashwathai.bubbles.CaptureMode.log("BLOW_START")
         blowStream = soundPool.play(blowLoopSound, v, v, 1, -1, 0.8f)
     }
 
@@ -213,12 +216,14 @@ class SoundManager(private val context: Context) {
 
     fun stopBlow() {
         if (blowStream != 0) {
+            com.ashwathai.bubbles.CaptureMode.log("BLOW_STOP")
             soundPool.stop(blowStream)
             blowStream = 0
         }
     }
 
     fun playBlowRelease() {
+        com.ashwathai.bubbles.CaptureMode.log("BLOW_RELEASE")
         play(blowReleaseSound, 0.8f, 1f)
     }
 

@@ -209,15 +209,25 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CaptureMode.readIntent(intent)
         LevelPlayAdManager.trackActivity(this)
         // Dark night-room UI everywhere: light status/nav bar icons.
         enableEdgeToEdge(
             statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
+        if (CaptureMode.enabled) {
+            androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+                hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        }
         setContent {
             BubblesTheme {
-                BubbleScreen(gameViewModel)
+                Box(Modifier.fillMaxSize()) {
+                    BubbleScreen(gameViewModel)
+                    if (CaptureMode.enabled) CaptureSyncFlash()
+                }
             }
         }
     }
@@ -593,7 +603,7 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
         }
 
         // ── Achievement unlock chip (gold glass moment) ──
-        gameViewModel.newlyUnlockedAchievement?.let { achievementId ->
+        if (!CaptureMode.enabled) gameViewModel.newlyUnlockedAchievement?.let { achievementId ->
             AchievementUnlockChip(
                 achievementId = achievementId,
                 reducedMotion = gameViewModel.reducedMotion,
@@ -645,7 +655,7 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
         }
 
         // No banner while playing (calm promise); menus only.
-        if (gameState !is GameState.Playing && gameState !is GameState.Paused) {
+        if (gameState !is GameState.Playing && gameState !is GameState.Paused && !CaptureMode.enabled) {
             LevelPlayBanner(Modifier.align(Alignment.BottomCenter))
         }
     }
@@ -1026,6 +1036,21 @@ fun BreatheOverlay(phase: BreathCycle.Phase, secondsLeft: Int, accent: Color, on
     }
 }
 
+/** Capture mode: a 300 ms full-white frame at start, logged as SYNC, to align sound with video. */
+@Composable
+fun CaptureSyncFlash() {
+    var show by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(1_500) // let the first frames settle
+        show = true
+        androidx.compose.runtime.withFrameNanos { }  // the frame that draws the white
+        CaptureMode.log("SYNC")
+        kotlinx.coroutines.delay(300)
+        show = false
+    }
+    if (show) Box(Modifier.fillMaxSize().background(Color.White))
+}
+
 /**
  * Float mode's whole UI (relaunch spec §3): one quiet "pops today" pill and a small
  * menu button. Everything else on screen is bubbles.
@@ -1201,7 +1226,9 @@ fun GameScreen(
 
         messages.forEach { PopMessageView(it, pxPerWorld) }
 
-        if (isZen) {
+        if (CaptureMode.enabled) {
+            // Capture mode: no HUD at all, just bubbles.
+        } else if (isZen) {
             FloatHud(
                 popsToday = popsToday, onMenu = onMenu,
                 showBlowHint = showBlowHint && breathePhase == null,
