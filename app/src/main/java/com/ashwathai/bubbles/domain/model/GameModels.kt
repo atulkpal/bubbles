@@ -295,10 +295,17 @@ object EconomyConfig {
     const val ZEN_MAX_BUBBLES = 18
     const val ZEN_SPAWN_INTERVAL = 2.5f
 
+    const val AD_CONTINUE_TIME_BONUS = 15f // seconds added on a rewarded-ad continue
+    const val COMBO_BONUS_CAP = 10       // combo coin bonus stops growing past this combo
+    const val PRESTIGE_UNLOCK_LEVEL = 20 // prestige needs level 20 cleared
+
+    // ── Between-level interstitials ──
+    // None until the player has cleared level 6, then every 3rd cleared level (6, 9, 12…).
+    // LevelPlayAdManager additionally enforces a minimum time gap between them.
+    const val FIRST_INTERSTITIAL_LEVEL = 6
+    const val INTERSTITIAL_EVERY_N_LEVELS = 3
+
     // ── Milestone Rewards (coins awarded on level-up) ──
-    const val MILESTONE_INTERVAL_1_10 = 3   // ad every 3rd level (3, 6, 9)
-    const val MILESTONE_INTERVAL_11_20 = 2  // ad every 2nd level (11, 13, 15, 17, 19)
-    const val MILESTONE_INTERVAL_21_PLUS = 1 // ad on every level (21+)
     const val MILESTONE_COINS_BASE = 25     // base coins at each milestone
     const val MILESTONE_COINS_PER_LEVEL = 10 // extra coins per level number beyond 1
 
@@ -306,14 +313,9 @@ object EconomyConfig {
         return MILESTONE_COINS_BASE + (level - 1) * MILESTONE_COINS_PER_LEVEL
     }
 
-    fun shouldShowAdBetweenLevels(completedLevel: Int): Boolean {
-        return when {
-            completedLevel in 1..10 -> completedLevel % MILESTONE_INTERVAL_1_10 == 0
-            completedLevel in 11..20 -> (completedLevel - 11) % MILESTONE_INTERVAL_11_20 == 0
-            completedLevel >= 21 -> (completedLevel - 21) % MILESTONE_INTERVAL_21_PLUS == 0
-            else -> false
-        }
-    }
+    fun shouldShowAdBetweenLevels(completedLevel: Int): Boolean =
+        completedLevel >= FIRST_INTERSTITIAL_LEVEL &&
+            completedLevel % INTERSTITIAL_EVERY_N_LEVELS == 0
 }
 
 data class EconomyState(

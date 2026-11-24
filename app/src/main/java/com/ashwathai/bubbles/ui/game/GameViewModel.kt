@@ -171,6 +171,15 @@ class GameViewModel(
     private var width: Float = 0f
     private var height: Float = 0f
 
+    private val achievementsInFlight = mutableSetOf<String>()
+
+    /**
+     * True once the one-time rewarded bonus on the current Level Complete / Game Over
+     * screen has been claimed, so its button hides (prevents unlimited coin farming).
+     */
+    var bonusClaimed by mutableStateOf(false)
+        private set
+
     init {
         observeHighScore()
         observeHighestLevel()
@@ -214,15 +223,20 @@ class GameViewModel(
      * re-evaluation then returns empty.
      */
     private fun evaluateAchievements() {
-        val newly = AchievementEngine.evaluate(economy, highestLevel)
-        if (newly.isEmpty()) return
+        // Ids already being written are skipped so two quick economy updates can't
+        // celebrate (or pay for) the same achievement twice.
+        val candidates = AchievementEngine.evaluate(economy, highestLevel) - achievementsInFlight
+        if (candidates.isEmpty()) return
+        achievementsInFlight += candidates
         viewModelScope.launch {
-            economyRepository.unlockAchievements(newly)
-            economyRepository.addCoins(newly.size * Achievements.REWARD_COINS)
+            val newly = economyRepository.unlockAchievements(candidates, Achievements.REWARD_COINS)
+            achievementsInFlight -= candidates
+            if (newly.isNotEmpty()) {
+                soundManager.playLevelUp()
+                soundManager.vibrateLevelUp()
+                newlyUnlockedAchievement = newly.last()
+            }
         }
-        soundManager.playLevelUp()
-        soundManager.vibrateLevelUp()
-        newlyUnlockedAchievement = newly.last()
     }
 
     /** Dismiss the achievement unlock chip (auto-called by the UI after a delay). */
@@ -274,6 +288,8 @@ class GameViewModel(
     }
 
     fun onTap(offset: androidx.compose.ui.geometry.Offset) {
+        // Taps on menus/overlays must not be queued and replayed when play resumes.
+        if (gameState !is GameState.Playing) return
         tapChannel.trySend(TapEvent(offset.x, offset.y, System.currentTimeMillis()))
     }
 
@@ -337,6 +353,7 @@ class GameViewModel(
 
         levelTimeLimit = levelConfig.timeLimit
         levelTimeRemaining = levelConfig.timeLimit
+        bonusClaimed = false
 
         gameState = GameState.Playing(
             score = 0,
@@ -351,12 +368,12 @@ class GameViewModel(
         startGameLoop()
     }
 
-    fun pauseGame() {
+    fun pauseGame(silent: Boolean = false) {
         when (val state = gameState) {
             is GameState.Playing -> {
                 gameState = GameState.Paused(state.score, state.highScore, state.currentLevel, state.isZen, state.isDaily)
                 gameLoopJob?.cancel()
-                soundManager.playClick()
+                if (!silent) soundManager.playClick()
                 musicManager.pause()
             }
             else -> {}
@@ -590,7 +607,8 @@ class GameViewModel(
             levelTimeRemaining = min(levelTimeLimit, levelTimeRemaining + 0.5f)
         }
 
-        val coinsGain = result.bubblesPopped * EconomyConfig.COINS_PER_POP * economy.coinMultiplier + (combo - 1) * EconomyConfig.CHAIN_BONUS
+        val coinsGain = result.bubblesPopped * EconomyConfig.COINS_PER_POP * economy.coinMultiplier +
+            (min(combo, EconomyConfig.COMBO_BONUS_CAP) - 1) * EconomyConfig.CHAIN_BONUS
         if (coinsGain > 0) {
             viewModelScope.launch {
                 economyRepository.addCoins(coinsGain)
@@ -724,6 +742,7 @@ class GameViewModel(
                 viewModelScope.launch { scoreRepository.setHighestLevel(nextLevel) }
             }
 
+            bonusClaimed = false
             gameState = GameState.LevelComplete(score, highScore, currentLevel, nextLevel)
             gameLoopJob?.cancel()
         } else {
@@ -753,6 +772,8 @@ class GameViewModel(
 
     /** Called after the interstitial ad is watched (or no ad is needed). */
     fun startNextLevelConfirmed() {
+        // Idempotent: a late ad callback after the level already started must not restart at 1.
+        if (gameState !is GameState.LevelComplete) return
         val completedLevel = (gameState as? GameState.LevelComplete)?.completedLevel ?: 0
         val nextLevel = (gameState as? GameState.LevelComplete)?.nextLevel ?: 1
         val score = (gameState as? GameState.LevelComplete)?.score ?: 0
@@ -801,7 +822,8 @@ class GameViewModel(
             daily -> {
                 isNewHighScore = score > economy.dailyBest
                 highScore = max(score, economy.dailyBest)
-                dailyReward = EconomyConfig.DAILY_REWARD + score
+                // Paid once per day; an ad-retry can only improve the best score.
+                dailyReward = if (isDailyCompleted()) 0 else EconomyConfig.DAILY_REWARD + score
                 val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
                 viewModelScope.launch {
                     economyRepository.completeDailyChallenge(score, date)
@@ -836,14 +858,32 @@ class GameViewModel(
             currentLevel = (gameState as? GameState.Playing)?.currentLevel ?: 1
         )
         lastGameOverState = gameOverState
+        bonusClaimed = false
         gameState = gameOverState
         gameLoopJob?.cancel()
     }
 
+    /** Replays the current mode; Adventure replays the level the player was on. */
     fun restartGame() {
         revertPreviewSkin()
         guaranteeNextPowerUp = false
-        if (mode == GameMode.ZEN) startZen() else startGame()
+        val level = when (val state = gameState) {
+            is GameState.Paused -> state.currentLevel
+            is GameState.GameOver -> state.currentLevel
+            is GameState.Playing -> state.currentLevel
+            else -> 1
+        }
+        when (mode) {
+            GameMode.ZEN -> startZen()
+            GameMode.DAILY -> startDaily()
+            else -> startGame(level.coerceAtLeast(1))
+        }
+    }
+
+    /** Called when the app goes to the background: never let the timer run unseen. */
+    fun onAppBackgrounded() {
+        if (gameState is GameState.Playing) pauseGame(silent = true)
+        musicManager.pause()
     }
 
     fun goHome() {
@@ -885,7 +925,12 @@ class GameViewModel(
         }
     }
 
+    /** Prestige is earned by clearing the last level of the Adventure track. */
+    val canPrestige: Boolean
+        get() = highestLevel > EconomyConfig.PRESTIGE_UNLOCK_LEVEL
+
     fun prestige() {
+        if (!canPrestige) return
         viewModelScope.launch {
             economyRepository.prestige()
             soundManager.playLevelUp()
@@ -975,6 +1020,8 @@ class GameViewModel(
 
     /** Add bonus coins from a rewarded ad (coin_bonus, double_daily, etc.). */
     fun addBonusCoins(amount: Int) {
+        if (bonusClaimed) return
+        bonusClaimed = true
         viewModelScope.launch {
             economyRepository.addCoins(amount)
         }
@@ -989,11 +1036,17 @@ class GameViewModel(
 
     /** Continue after Game Over by spending coins (no ad needed). */
     fun continueWithCoins() {
-        if (economy.coins < EconomyConfig.CONTINUE_COST) return
+        if (economy.coins < EconomyConfig.CONTINUE_COST || lastGameOverState == null) return
         viewModelScope.launch {
-            economyRepository.spendCoins(EconomyConfig.CONTINUE_COST)
+            if (economyRepository.spendCoins(EconomyConfig.CONTINUE_COST)) {
+                continueGameWithTimeBonus(EconomyConfig.CONTINUE_TIME_BONUS)
+            }
         }
-        continueGameWithTimeBonus(EconomyConfig.CONTINUE_TIME_BONUS)
+    }
+
+    /** Continue after a fully watched rewarded ad: same level, full timer + bonus seconds. */
+    fun continueAfterAd() {
+        continueGameWithTimeBonus(EconomyConfig.AD_CONTINUE_TIME_BONUS)
     }
 
     private fun continueGameWithTimeBonus(timeBonus: Float) {
@@ -1006,8 +1059,9 @@ class GameViewModel(
 
         val lvlIndex = (savedLevel - 1).coerceIn(0, config.levels.size - 1)
         currentLevelConfig = config.levels[lvlIndex]
-        levelTimeLimit = currentLevelConfig.timeLimit
-        levelTimeRemaining = currentLevelConfig.timeLimit + timeBonus
+        // Raise the limit too, so the bonus isn't clamped away and the ring stays <= 100%.
+        levelTimeLimit = currentLevelConfig.timeLimit + timeBonus
+        levelTimeRemaining = levelTimeLimit
         bubblesPoppedThisLevel = 0
         bubblesSpawnedThisLevel = 0
         combo = 0

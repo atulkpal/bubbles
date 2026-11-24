@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.viewModels
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
@@ -59,6 +61,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -155,7 +161,14 @@ class MainActivity : ComponentActivity() {
     private val musicManager: MusicManager by lazy {
         AppModule.provideMusicManager(this)
     }
-    private val gameViewModel: GameViewModel by lazy {
+    private val gameViewModel: GameViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = newGameViewModel() as T
+        }
+    }
+
+    private fun newGameViewModel(): GameViewModel =
         GameViewModel(
             scoreRepository = scoreRepository,
             settingsRepository = settingsRepository,
@@ -170,7 +183,6 @@ class MainActivity : ComponentActivity() {
             checkLevelCompleteUseCase = AppModule.provideCheckLevelCompleteUseCase(),
             canSpawnBubbleUseCase = AppModule.provideCanSpawnBubbleUseCase()
         )
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -185,7 +197,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        musicManager.pause()
+        gameViewModel.onAppBackgrounded()
     }
 
     override fun onResume() {
@@ -207,6 +219,17 @@ fun Modifier.themeBackground(theme: ThemePalette): Modifier {
 /** App version shown in Settings → About. Keep in sync with app/build.gradle.kts. */
 const val APP_VERSION = "1.2"
 
+/** Short, friendly feedback when an opt-in ad can't be shown (instead of a silent tap). */
+fun showAdUnavailable(context: android.content.Context, reason: String) {
+    val text = when {
+        reason.contains("limit", ignoreCase = true) -> "That's all the bonus videos for today. Come back tomorrow!"
+        reason.contains("Cooldown", ignoreCase = true) -> reason.replace("Cooldown active — ", "")
+            .replaceFirstChar { it.uppercase() }
+        else -> "No video available right now. Please try again in a moment."
+    }
+    android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
+}
+
 fun openUrl(context: android.content.Context, url: String) {
     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 }
@@ -225,6 +248,17 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
     val shakeTrauma = gameViewModel.shakeTrauma
 
     var showSettings by remember { mutableStateOf(false) }
+
+    // System Back never closes the app mid-flow: it closes Settings, pauses/resumes play,
+    // and returns to the menu from result screens. Only the start screen lets Back exit.
+    BackHandler(enabled = showSettings || gameState !is GameState.Ready) {
+        when {
+            showSettings -> showSettings = false
+            gameState is GameState.Playing -> gameViewModel.pauseGame()
+            gameState is GameState.Paused -> gameViewModel.resumeGame()
+            else -> gameViewModel.goHome()
+        }
+    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -265,7 +299,7 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                                 adType = "powerup_guarantee",
                                 activity = activity,
                                 onAdLoaded = {},
-                                onAdFailed = {},
+                                onAdFailed = { reason -> showAdUnavailable(activity, reason) },
                                 onUserEarnedReward = {
                                     gameViewModel.setGuaranteeNextPowerUp()
                                 }
@@ -278,7 +312,7 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                                 adType = "retry_daily",
                                 activity = activity,
                                 onAdLoaded = {},
-                                onAdFailed = {},
+                                onAdFailed = { reason -> showAdUnavailable(activity, reason) },
                                 onUserEarnedReward = {
                                     gameViewModel.startDaily()
                                 }
@@ -353,29 +387,21 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                 val activity = LocalContext.current as? android.app.Activity
                 val waitingForAd = gameState.waitingForAd
 
-                if (waitingForAd && activity != null) {
-                    // Side effect must run once per level — not on every recomposition
+                if (waitingForAd) {
+                    // Paced interstitial (not a rewarded ad). The callback always fires once,
+                    // whether the ad closes, fails, or isn't shown, so play always continues.
                     LaunchedEffect(gameState.completedLevel) {
-                        if (LevelPlayAdManager.adsRemaining() > 0) {
-                            LevelPlayAdManager.loadAndShowRewardedAd(
-                                adType = "level_interstitial",
-                                activity = activity,
-                                onAdLoaded = {},
-                                onAdFailed = {
-                                    // If ad fails, skip the ad and go to next level directly
-                                    gameViewModel.startNextLevelConfirmed()
-                                },
-                                onUserEarnedReward = {
-                                    gameViewModel.startNextLevelConfirmed()
-                                }
-                            )
+                        if (activity != null) {
+                            LevelPlayAdManager.showLevelCompleteInterstitial(activity) {
+                                gameViewModel.startNextLevelConfirmed()
+                            }
                         } else {
-                            // Daily ad cap reached — skip straight to the next level
                             gameViewModel.startNextLevelConfirmed()
                         }
                     }
-                } else {
-                    // No ad needed — show the level complete screen
+                }
+                run {
+                    // Always rendered (also behind a pending ad) so the screen is never blank.
                     val milestoneCoins = EconomyConfig.milestoneRewardForLevel(gameState.completedLevel)
                     LevelCompleteScreen(
                         theme = theme,
@@ -389,13 +415,13 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                         reducedMotion = gameViewModel.reducedMotion,
                         onNext = { gameViewModel.startNextLevel() },
                         onHome = { gameViewModel.goHome() },
-                        onCoinBonus = if (activity != null && gameState.completedLevel >= 3) {
+                        onCoinBonus = if (activity != null && gameState.completedLevel >= 3 && !gameViewModel.bonusClaimed) {
                             {
                                 LevelPlayAdManager.loadAndShowRewardedAd(
                                     adType = "coin_bonus",
                                     activity = activity,
                                     onAdLoaded = {},
-                                    onAdFailed = {},
+                                    onAdFailed = { reason -> showAdUnavailable(activity, reason) },
                                     onUserEarnedReward = {
                                         gameViewModel.addBonusCoins(50)
                                     }
@@ -424,16 +450,16 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     onRestart = { gameViewModel.restartGame() },
                     onHome = { gameViewModel.goHome() },
                     onPrestige = { gameViewModel.prestige() },
+                    canPrestige = gameViewModel.canPrestige,
                     onContinue = if (!gameState.won && !gameState.zen && !gameState.daily && activity != null) {
                         {
                             LevelPlayAdManager.loadAndShowRewardedAd(
                                 adType = "continue",
                                 activity = activity,
                                 onAdLoaded = {},
-                                onAdFailed = {},
+                                onAdFailed = { reason -> showAdUnavailable(activity, reason) },
                                 onUserEarnedReward = {
-                                    gameViewModel.continueGame()
-                                    gameViewModel.addTimeBonus(15f)
+                                    gameViewModel.continueAfterAd()
                                 }
                             )
                         }
@@ -443,26 +469,26 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                             gameViewModel.continueWithCoins()
                         }
                     } else null,
-                    onDoubleDaily = if (gameState.daily && gameState.dailyReward > 0 && activity != null) {
+                    onDoubleDaily = if (gameState.daily && gameState.dailyReward > 0 && activity != null && !gameViewModel.bonusClaimed) {
                         {
                             LevelPlayAdManager.loadAndShowRewardedAd(
                                 adType = "double_daily",
                                 activity = activity,
                                 onAdLoaded = {},
-                                onAdFailed = {},
+                                onAdFailed = { reason -> showAdUnavailable(activity, reason) },
                                 onUserEarnedReward = {
                                     gameViewModel.addBonusCoins(gameState.dailyReward)
                                 }
                             )
                         }
                     } else null,
-                    onCoinBonus = if (!gameState.zen && activity != null) {
+                    onCoinBonus = if (!gameState.zen && activity != null && !gameViewModel.bonusClaimed) {
                         {
                             LevelPlayAdManager.loadAndShowRewardedAd(
                                 adType = "coin_bonus",
                                 activity = activity,
                                 onAdLoaded = {},
-                                onAdFailed = {},
+                                onAdFailed = { reason -> showAdUnavailable(activity, reason) },
                                 onUserEarnedReward = {
                                     gameViewModel.addBonusCoins(50)
                                 }
@@ -505,7 +531,9 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                 onUpgrade = { gameViewModel.upgradePowerUp(it) },
                 onSelectSkin = { gameViewModel.selectSkin(it) },
                 onSelectTheme = { gameViewModel.selectTheme(it) },
-                onPrestige = { gameViewModel.prestige() },
+                onPrestige = if (gameViewModel.canPrestige) {
+                    { gameViewModel.prestige() }
+                } else null,
                 onClose = { showSettings = false },
                 onTrySkin = if (activity != null) {
                     { skinName ->
@@ -513,7 +541,7 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                             adType = "skin_preview",
                             activity = activity,
                             onAdLoaded = {},
-                            onAdFailed = {},
+                            onAdFailed = { reason -> showAdUnavailable(activity, reason) },
                             onUserEarnedReward = {
                                 gameViewModel.previewSkin(skinName)
                             }
@@ -1510,6 +1538,7 @@ fun GameOverScreen(
     onRestart: () -> Unit,
     onHome: () -> Unit,
     onPrestige: () -> Unit,
+    canPrestige: Boolean = false,
     onContinue: (() -> Unit)? = null,
     onContinueWithCoins: (() -> Unit)? = null,
     onDoubleDaily: (() -> Unit)? = null,
@@ -1690,7 +1719,7 @@ fun GameOverScreen(
                     primary = false,
                     icon = Icons.Default.Home
                 )
-                if (won && prestigeLevel < 1) {
+                if (won && prestigeLevel < 1 && canPrestige) {
                     Spacer(modifier = Modifier.height(LuxurySpacing.SM))
                     LuxuryButton(
                         text = "PRESTIGE · GOLD SKIN + 2X COINS",
@@ -2014,7 +2043,7 @@ fun PopMessageView(msg: PopMessage) {
             )
         ),
         modifier = Modifier
-            .offset(x = (msg.x - 50).dp, y = msg.y.dp)
+            .offset { IntOffset(msg.x.roundToInt() - 50.dp.roundToPx(), msg.y.roundToInt()) }
             .rotate(msg.rotation)
     )
 }

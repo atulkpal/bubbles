@@ -17,6 +17,10 @@ interface EconomyRepository {
     suspend fun completeDailyChallenge(score: Int, date: String)
     suspend fun markBubbleTypeSeen(type: String)
 
-    /** Permanently records achievement ids as unlocked (additive, exactly-once). */
-    suspend fun unlockAchievements(ids: Set<String>)
+    /**
+     * Permanently records achievement ids as unlocked (additive, exactly-once) and, in the
+     * same atomic write, pays [rewardPerUnlock] coins for each id that was not unlocked before.
+     * Returns only the ids that were newly unlocked by this call.
+     */
+    suspend fun unlockAchievements(ids: Set<String>, rewardPerUnlock: Int = 0): Set<String>
 }

@@ -83,7 +83,7 @@ fun SettingsScreen(
     onUpgrade: (String) -> Unit,
     onSelectSkin: (String) -> Unit,
     onSelectTheme: (String) -> Unit,
-    onPrestige: () -> Unit,
+    onPrestige: (() -> Unit)? = null,
     onClose: () -> Unit,
     onTrySkin: ((String) -> Unit)? = null,
     onRemoveAds: (() -> Unit)? = null
@@ -368,7 +368,7 @@ fun SettingsScreen(
                     }
                 }
 
-                if (economy.prestigeLevel < 1) {
+                if (economy.prestigeLevel < 1 && onPrestige != null) {
                     Spacer(modifier = Modifier.height(LuxurySpacing.MD))
                     LuxuryButton(
                         text = "PRESTIGE · GOLD SKIN + 2X COINS",

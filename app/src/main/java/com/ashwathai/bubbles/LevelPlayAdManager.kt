@@ -3,9 +3,6 @@ package com.ashwathai.bubbles
 import android.app.Activity
 import android.content.Context
 import android.util.Log
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.ProcessLifecycleOwner
 import com.unity3d.mediation.LevelPlay
 import com.unity3d.mediation.LevelPlayAdError
 import com.unity3d.mediation.LevelPlayAdInfo
@@ -28,12 +25,13 @@ import kotlinx.coroutines.flow.asStateFlow
  * - Singleton object accessed directly (no interface).
  * - Init in Application.onCreate via [init]; UI gates on [sdkReady].
  * - Rewarded ads use load-and-show pattern with preload-after-close.
- * - Foreground interstitial replaces App Open format (LevelPlay has none).
  * - Fail-closed everywhere: no ad → no reward → user-facing feedback only.
+ * - Rewarded ads are ONLY ever shown after the player taps a button that offers them.
+ * - No app-open / return-to-app interstitials (removed in v1.3: Play disruptive-ads policy).
  *
  * Ad placements:
- *   - Rewarded: continue, retry_daily, double_daily, coin_bonus, powerup_guarantee, skin_preview
- *   - Interstitial: foreground (onStart after 4h), level_complete (every 3rd)
+ *   - Rewarded (opt-in): continue, retry_daily, double_daily, coin_bonus, powerup_guarantee
+ *   - Interstitial: level_complete (paced by EconomyConfig + a minimum time gap)
  */
 object LevelPlayAdManager {
 
@@ -44,7 +42,8 @@ object LevelPlayAdManager {
     val sdkReady: StateFlow<Boolean> = _sdkReady.asStateFlow()
 
     private var appContext: Context? = null
-    private var currentActivity: Activity? = null
+    private var currentActivityRef: java.lang.ref.WeakReference<Activity>? = null
+    private val currentActivity: Activity? get() = currentActivityRef?.get()
     private var initAttempted = false
 
     // ── Rewarded Ad State ──
@@ -57,27 +56,18 @@ object LevelPlayAdManager {
 
     // ── Interstitial Ad State ──
     private var interstitialAd: LevelPlayInterstitialAd? = null
-    private var lastForegroundInterstitialAt = 0L
-    private const val FOREGROUND_FRESHNESS_MS = 4 * 60 * 60 * 1000L // 4h
-
-    // ── Level-Complete Interstitial Pacing ──
-    private var levelCompletionCount = 0
+    /** Continuation for the interstitial currently on screen; run exactly once on close/fail. */
+    private var interstitialOnDone: (() -> Unit)? = null
     private var lastLevelInterstitialAt = 0L
-    private const val LEVEL_INTERSTITIAL_EVERY = 3
     private const val LEVEL_INTERSTITIAL_MIN_GAP_MS = 3 * 60 * 1000L // 3 min
 
-    // ── Daily Ad Cap ──
+    // ── Daily cap for opt-in rewarded ads (persisted so a restart doesn't reset it) ──
+    private const val PREFS = "levelplay_ads"
+    private const val KEY_DATE = "rewarded_date"
+    private const val KEY_COUNT = "rewarded_count"
     private var adsShownToday = 0
     private const val MAX_ADS_PER_DAY = 5
     private var lastAdDate = ""
-
-    // ── Lifecycle Observer ──
-    private val foregroundObserver = object : DefaultLifecycleObserver {
-        override fun onStart(owner: LifecycleOwner) {
-            maybeShowForegroundInterstitial()
-        }
-    }
-    private var foregroundWired = false
 
     // ── Init ──
 
@@ -85,6 +75,11 @@ object LevelPlayAdManager {
         if (_sdkReady.value) return
         initAttempted = true
         appContext = context.applicationContext
+        loadDailyCount()
+
+        // Privacy signal, set before init: a general-audience game, not directed at
+        // children (must match the Play Console target-audience setting).
+        LevelPlay.setMetaData("is_child_directed", "false")
 
         LevelPlay.init(
             context,
@@ -106,11 +101,7 @@ object LevelPlayAdManager {
     }
 
     fun trackActivity(activity: Activity) {
-        currentActivity = activity
-        if (!foregroundWired) {
-            foregroundWired = true
-            ProcessLifecycleOwner.get().lifecycle.addObserver(foregroundObserver)
-        }
+        currentActivityRef = java.lang.ref.WeakReference(activity)
     }
 
     // ── Rewarded Ads ──
@@ -217,8 +208,9 @@ object LevelPlayAdManager {
 
         override fun onAdDisplayed(adInfo: LevelPlayAdInfo) {
             Log.i(TAG, "Rewarded DISPLAYED | ${adInfoTag(adInfo)} | revenue=${adInfo.revenue}")
+            checkDailyCap()
             adsShownToday++
-            updateDailyCount()
+            saveDailyCount()
         }
 
         override fun onAdDisplayFailed(error: LevelPlayAdError, adInfo: LevelPlayAdInfo) {
@@ -277,12 +269,15 @@ object LevelPlayAdManager {
                 }
                 override fun onAdDisplayFailed(error: LevelPlayAdError, adInfo: LevelPlayAdInfo) {
                     Log.e(TAG, "Interstitial display failed: ${error.errorMessage} | ${adInfoTag(adInfo)}")
+                    finishInterstitial()
                 }
                 override fun onAdClicked(adInfo: LevelPlayAdInfo) {
                     Log.d(TAG, "Interstitial clicked | ${adInfoTag(adInfo)}")
                 }
                 override fun onAdClosed(adInfo: LevelPlayAdInfo) {
                     Log.d(TAG, "Interstitial closed | ${adInfoTag(adInfo)}")
+                    finishInterstitial()
+                    loadAd() // preload the next one
                 }
                 override fun onAdInfoChanged(adInfo: LevelPlayAdInfo) { /* waterfalls */ }
             })
@@ -290,68 +285,61 @@ object LevelPlayAdManager {
         }
     }
 
-    private fun maybeShowForegroundInterstitial() {
-        if (BillingManager.adsRemoved.value) return
-        val activity = currentActivity ?: return
-        val now = System.currentTimeMillis()
-        if (now - lastForegroundInterstitialAt < FOREGROUND_FRESHNESS_MS) return
-        if (!AdConfig.interstitialConfigured || !_sdkReady.value) return
-
-        val ad = interstitialAd ?: LevelPlayInterstitialAd(AdConfig.INTERSTITIAL_AD_UNIT_ID).also {
-            interstitialAd = it
-            setupInterstitial()
-        }
-        if (ad.isAdReady) {
-            lastForegroundInterstitialAt = now
-            ad.showAd(activity, AdConfig.INTERSTITIAL_PLACEMENT)
-            ad.loadAd() // reload for next foreground
-        } else {
-            ad.loadAd()
-        }
+    private fun finishInterstitial() {
+        val done = interstitialOnDone
+        interstitialOnDone = null
+        done?.invoke()
     }
 
     /**
-     * Show an interstitial after every Nth level completion.
-     * Called from GameViewModel after GameState.LevelComplete is emitted.
-     * Never blocks the reward flow — only fires if the ad is ready.
+     * Between-level interstitial. The caller decides *whether* this level earns an ad
+     * (EconomyConfig.shouldShowAdBetweenLevels); this enforces ad-free, readiness and the
+     * minimum time gap. [onDone] ALWAYS runs exactly once: after the ad closes, if it
+     * fails to display, or immediately when no ad is shown, so the game can never stall.
      */
-    fun maybeShowLevelCompleteInterstitial(activity: Activity) {
-        if (BillingManager.adsRemoved.value) return
-        if (!AdConfig.interstitialConfigured || !_sdkReady.value) return
-        levelCompletionCount++
-        if (levelCompletionCount % LEVEL_INTERSTITIAL_EVERY != 0) return
+    fun showLevelCompleteInterstitial(activity: Activity, onDone: () -> Unit) {
         val now = System.currentTimeMillis()
-        if (now - lastLevelInterstitialAt < LEVEL_INTERSTITIAL_MIN_GAP_MS) return
-
-        val ad = interstitialAd ?: LevelPlayInterstitialAd(AdConfig.INTERSTITIAL_AD_UNIT_ID).also {
-            interstitialAd = it
-            setupInterstitial()
+        val ad = interstitialAd
+        val canShow = !BillingManager.adsRemoved.value &&
+            AdConfig.interstitialConfigured && _sdkReady.value &&
+            now - lastLevelInterstitialAt >= LEVEL_INTERSTITIAL_MIN_GAP_MS &&
+            ad != null && ad.isAdReady
+        if (!canShow) {
+            if (ad != null && _sdkReady.value && !ad.isAdReady) ad.loadAd()
+            onDone()
+            return
         }
-        if (ad.isAdReady) {
-            lastLevelInterstitialAt = now
-            Log.i(TAG, "Level-complete interstitial DISPLAYED (completion #$levelCompletionCount)")
-            ad.showAd(activity, "level_complete")
-        } else {
-            ad.loadAd()
-        }
+        lastLevelInterstitialAt = now
+        interstitialOnDone = onDone
+        ad!!.showAd(activity, "level_complete")
     }
 
     // ── Daily Cap ──
 
+    private fun today(): String =
+        java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+
     private fun checkDailyCap() {
-        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        val today = today()
         if (today != lastAdDate) {
             lastAdDate = today
             adsShownToday = 0
+            saveDailyCount()
         }
     }
 
-    private fun updateDailyCount() {
-        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
-        if (today != lastAdDate) {
-            lastAdDate = today
-            adsShownToday = 1
-        }
+    private fun loadDailyCount() {
+        val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE) ?: return
+        lastAdDate = prefs.getString(KEY_DATE, "") ?: ""
+        adsShownToday = prefs.getInt(KEY_COUNT, 0)
+        checkDailyCap()
+    }
+
+    private fun saveDailyCount() {
+        appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()
+            ?.putString(KEY_DATE, lastAdDate)
+            ?.putInt(KEY_COUNT, adsShownToday)
+            ?.apply()
     }
 
     /** Check if the user has ads remaining today. */

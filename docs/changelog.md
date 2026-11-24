@@ -6,6 +6,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed (v1.3 "stop the harm", from the 2026-11-24 audit)
+- **Ads follow Play policy:**
+  - The forced rewarded ad between levels is replaced by a real interstitial: none before level 6, then at most every 3rd level with a 3-minute gap.
+  - The interstitial's callback always fires, so the game can't freeze on a blank screen.
+  - The full-screen ad on every return to the app is removed.
+  - Rewarded ads now only ever play after the player taps a button that offers them.
+  - The `is_child_directed=false` privacy flag is sent to LevelPlay before init.
+- **Daily ad limit:**
+  - It is now saved, so restarting the app no longer resets it.
+  - Failed opt-in ads now show a message instead of doing nothing.
+- **Background pause:** leaving the app pauses the run, so the timer can no longer run out unseen.
+- **Back button:** Back now pauses the game, closes Settings, or returns to the menu instead of exiting.
+- **Restart and Play Again:** they replay the same level and mode (they used to always start Adventure level 1).
+- **Pop/COMBO labels:** they are positioned in pixels, not dp, so they now appear where you tap.
+- **Coin and stat saving:**
+  - Updates run one at a time, so overlapping updates can no longer lose coins.
+  - An achievement now unlocks and pays exactly once, in a single atomic step.
+- **Economy exploits:**
+  - The combo coin bonus stops growing at x10.
+  - The +50 / Double reward buttons hide after one use.
+  - The Daily reward is paid once per day.
+  - Prestige requires clearing level 20.
+  - The continue fixes:
+    - Coin Continue only starts if the coins were actually spent.
+    - The ad Continue's +15 s is no longer clamped away.
+- **Menu taps:** taps on menus are no longer queued and replayed when play resumes.
+- **Music size:** the music loops are now OGG instead of WAV (3.2 MB → 0.17 MB).
+
 ### Added
 - **Achievements** — 12 local milestone badges across 4 families (Pops 100/1k/10k · Combo 10x/25x/50x · Levels 5/20/50 · Progress: Prestige 1, 10 games, Daily 500). Pure `AchievementEngine` in the domain layer evaluates `EconomyState` (25 coins per badge, exactly-once, persisted via DataStore `unlockedAchievements`). Gold glass unlock chip with spring entrance (static under reduced-motion), level-up sound + haptic. New "Achievements" section in Settings above Stats (unlocked = gold serif title, locked = dimmed "?").
 - **Compose UI tests** — `SettingsScreenUiTest` (8 tests): section rendering, achievements display, upgrade pill callback, theme selection, sound toggle, close affordance, premium-section gating.

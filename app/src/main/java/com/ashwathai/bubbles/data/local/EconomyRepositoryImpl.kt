@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : EconomyRepository {
 
@@ -37,6 +39,9 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
     private val DAILY_BEST_KEY = intPreferencesKey("eco_daily_best")
     private val SEEN_TYPES_KEY = stringSetPreferencesKey("eco_seen_bubble_types")
     private val ACHIEVEMENTS_KEY = stringSetPreferencesKey("eco_unlocked_achievements")
+
+    /** Serialises every read-modify-write so overlapping coin/stat updates can't lose each other. */
+    private val writeLock = Mutex()
 
     private val _state = MutableStateFlow(EconomyState())
     override val state: kotlinx.coroutines.flow.StateFlow<EconomyState> = _state.asStateFlow()
@@ -68,24 +73,24 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
         }
     }
 
-    override suspend fun addCoins(amount: Int) {
-        if (amount <= 0) return
+    override suspend fun addCoins(amount: Int) = writeLock.withLock {
+        if (amount <= 0) return@withLock
         val newCoins = _state.value.coins + amount
         dataStore.edit { it[COINS_KEY] = newCoins }
         _state.value = _state.value.copy(coins = newCoins)
     }
 
-    override suspend fun spendCoins(amount: Int): Boolean {
-        if (amount <= 0) return true
+    override suspend fun spendCoins(amount: Int): Boolean = writeLock.withLock {
+        if (amount <= 0) return@withLock true
         val current = _state.value
-        if (current.coins < amount) return false
+        if (current.coins < amount) return@withLock false
         val newCoins = current.coins - amount
         dataStore.edit { it[COINS_KEY] = newCoins }
         _state.value = current.copy(coins = newCoins)
-        return true
+        true
     }
 
-    override suspend fun setUpgradeLevel(key: String, level: Int) {
+    override suspend fun setUpgradeLevel(key: String, level: Int) = writeLock.withLock {
         val clamped = level.coerceIn(1, EconomyConfig.UPGRADE_MAX)
         val current = _state.value
         val updated = when (key) {
@@ -106,36 +111,36 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
         }
     }
 
-    override suspend fun setSkin(name: String) {
+    override suspend fun setSkin(name: String) = writeLock.withLock {
         dataStore.edit { it[SKIN_KEY] = name }
         _state.value = _state.value.copy(skin = name)
     }
 
-    override suspend fun setTheme(name: String) {
+    override suspend fun setTheme(name: String) = writeLock.withLock {
         dataStore.edit { it[THEME_KEY] = name }
         _state.value = _state.value.copy(theme = name)
     }
 
-    override suspend fun recordPops(count: Int) {
-        if (count <= 0) return
+    override suspend fun recordPops(count: Int) = writeLock.withLock {
+        if (count <= 0) return@withLock
         val newPops = _state.value.lifetimePops + count
         dataStore.edit { it[POPS_KEY] = newPops }
         _state.value = _state.value.copy(lifetimePops = newPops)
     }
 
-    override suspend fun recordMaxCombo(combo: Int) {
-        if (combo <= _state.value.maxCombo) return
+    override suspend fun recordMaxCombo(combo: Int) = writeLock.withLock {
+        if (combo <= _state.value.maxCombo) return@withLock
         dataStore.edit { it[MAX_COMBO_KEY] = combo }
         _state.value = _state.value.copy(maxCombo = combo)
     }
 
-    override suspend fun recordGamePlayed() {
+    override suspend fun recordGamePlayed() = writeLock.withLock {
         val newGames = _state.value.gamesPlayed + 1
         dataStore.edit { it[GAMES_KEY] = newGames }
         _state.value = _state.value.copy(gamesPlayed = newGames)
     }
 
-    override suspend fun prestige() {
+    override suspend fun prestige() = writeLock.withLock {
         val level = _state.value.prestigeLevel + 1
         dataStore.edit {
             it[PRESTIGE_KEY] = level
@@ -145,7 +150,7 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
         _state.value = _state.value.copy(prestigeLevel = level, coins = 0, skin = BubbleSkins.GOLD.name)
     }
 
-    override suspend fun completeDailyChallenge(score: Int, date: String) {
+    override suspend fun completeDailyChallenge(score: Int, date: String) = writeLock.withLock {
         val best = maxOf(_state.value.dailyBest, score)
         dataStore.edit {
             it[DAILY_DATE_KEY] = date
@@ -154,18 +159,25 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
         _state.value = _state.value.copy(dailyDate = date, dailyBest = best)
     }
 
-    override suspend fun markBubbleTypeSeen(type: String) {
-        if (type in _state.value.seenBubbleTypes) return
+    override suspend fun markBubbleTypeSeen(type: String) = writeLock.withLock {
+        if (type in _state.value.seenBubbleTypes) return@withLock
         val updated = _state.value.seenBubbleTypes + type
         dataStore.edit { it[SEEN_TYPES_KEY] = updated }
         _state.value = _state.value.copy(seenBubbleTypes = updated)
     }
 
-    override suspend fun unlockAchievements(ids: Set<String>) {
-        if (ids.isEmpty()) return
-        val updated = _state.value.unlockedAchievements + ids
-        if (updated == _state.value.unlockedAchievements) return
-        dataStore.edit { it[ACHIEVEMENTS_KEY] = updated }
-        _state.value = _state.value.copy(unlockedAchievements = updated)
-    }
+    override suspend fun unlockAchievements(ids: Set<String>, rewardPerUnlock: Int): Set<String> =
+        writeLock.withLock {
+            val current = _state.value
+            val newlyUnlocked = ids - current.unlockedAchievements
+            if (newlyUnlocked.isEmpty()) return@withLock emptySet()
+            val updated = current.unlockedAchievements + newlyUnlocked
+            val coins = current.coins + newlyUnlocked.size * rewardPerUnlock.coerceAtLeast(0)
+            dataStore.edit {
+                it[ACHIEVEMENTS_KEY] = updated
+                it[COINS_KEY] = coins
+            }
+            _state.value = current.copy(unlockedAchievements = updated, coins = coins)
+            newlyUnlocked
+        }
 }
