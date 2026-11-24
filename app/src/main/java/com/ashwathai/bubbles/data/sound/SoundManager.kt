@@ -182,6 +182,11 @@ class SoundManager(private val context: Context) {
         }
     }
 
+    // ── Hold-to-blow (relaunch 3b; dedicated breathy sounds land in 3c) ──
+    fun playBlowStart() {}
+    fun stopBlow() {}
+    fun playBlowRelease() {}
+
     fun release() {
         soundPool.release()
     }

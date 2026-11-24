@@ -64,6 +64,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.layout.navigationBarsPadding
 import com.ashwathai.bubbles.ui.theme.soap.SoapColors
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -295,7 +296,16 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                 // Buttons consume their own downs, so menu taps never reach the game.
                 awaitEachGesture {
                     val down = awaitFirstDown()
-                    gameViewModel.onTap(down.position)
+                    gameViewModel.onPointerDown(down.position)
+                    try {
+                        while (true) {
+                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) break
+                            gameViewModel.onPointerMove(change.position)
+                        }
+                    } finally {
+                        gameViewModel.onPointerUp()
+                    }
                 }
             }
             .themeBackground(theme)
@@ -378,6 +388,8 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     pxPerWorld = gameViewModel.pxPerWorld,
                     popsToday = economy.popsOn(todayString()),
                     onMenu = { gameViewModel.goHome() },
+                    blowing = gameViewModel.blowing,
+                    showBlowHint = gameViewModel.showBlowHint,
                     tutorialCard = gameViewModel.tutorialCard,
                     tutorialText = gameViewModel.tutorialCard?.let { gameViewModel.tutorialTextFor(it) },
                     onDismissTutorial = { gameViewModel.dismissTutorialCard() },
@@ -920,7 +932,7 @@ fun LogoOrb(reducedMotion: Boolean = false) {
  * menu button. Everything else on screen is bubbles.
  */
 @Composable
-fun FloatHud(popsToday: Int, onMenu: () -> Unit) {
+fun FloatHud(popsToday: Int, onMenu: () -> Unit, showBlowHint: Boolean = false) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -958,6 +970,17 @@ fun FloatHud(popsToday: Int, onMenu: () -> Unit) {
                 modifier = Modifier.size(22.dp)
             )
         }
+        if (showBlowHint) {
+            Text(
+                text = "Hold anywhere to blow your own bubble",
+                color = SoapColors.TextSecondary,
+                fontSize = 15.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 32.dp)
+            )
+        }
     }
 }
 
@@ -991,7 +1014,9 @@ fun GameScreen(
     isPaused: Boolean = false,
     pxPerWorld: Float = 1f,
     popsToday: Int = 0,
-    onMenu: () -> Unit = {}
+    onMenu: () -> Unit = {},
+    blowing: Bubble? = null,
+    showBlowHint: Boolean = false
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         val shakePx = if (reducedMotion || shakeTrauma <= 0f) {
@@ -1014,13 +1039,14 @@ fun GameScreen(
             withTransform({ scale(pxPerWorld, pxPerWorld, pivot = Offset.Zero) }) {
                 particles.forEach { drawParticle(it, reducedMotion) }
                 bubbles.forEach { drawBubble(it, skin, timeSec, wobble = !reducedMotion) }
+                blowing?.let { drawSoapBubble(it, timeSec, wobble = !reducedMotion) }
             }
         }
 
         messages.forEach { PopMessageView(it, pxPerWorld) }
 
         if (isZen) {
-            FloatHud(popsToday = popsToday, onMenu = onMenu)
+            FloatHud(popsToday = popsToday, onMenu = onMenu, showBlowHint = showBlowHint)
         } else Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.TopCenter

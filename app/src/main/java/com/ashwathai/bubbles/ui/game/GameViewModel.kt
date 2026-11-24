@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.ashwathai.bubbles.data.sound.MusicManager
 import com.ashwathai.bubbles.data.sound.SoundManager
 import com.ashwathai.bubbles.domain.model.WorldScale
+import com.ashwathai.bubbles.domain.model.BlowMechanics
 import com.ashwathai.bubbles.domain.model.AchievementEngine
 import com.ashwathai.bubbles.domain.model.AudioConfig
 import com.ashwathai.bubbles.domain.model.Achievements
@@ -50,11 +51,7 @@ import kotlin.random.Random
 
 private enum class GameMode { ADVENTURE, ZEN, DAILY }
 
-private data class TapEvent(
-    val x: Float,
-    val y: Float,
-    val timeMs: Long
-)
+
 
 class GameViewModel(
     private val scoreRepository: ScoreRepository,
@@ -165,7 +162,6 @@ class GameViewModel(
     private var bubblesPoppedThisLevel = 0
     private var bubblesSpawnedThisLevel = 0
     private var gameLoopJob: kotlinx.coroutines.Job? = null
-    private val tapChannel = Channel<TapEvent>(Channel.UNLIMITED)
 
     // ── Ad Reward State ──
     private var lastGameOverState: GameState.GameOver? = null
@@ -303,12 +299,88 @@ class GameViewModel(
         seedFloatIfEmpty()
     }
 
-    /** [offset] is in screen px (from the pointer); converted to world units here. */
-    fun onTap(offset: androidx.compose.ui.geometry.Offset) {
-        // Taps on menus/overlays must not be queued and replayed when play resumes.
+    /** The bubble being blown right now (Float only), drawn at the fingertip. Null = none. */
+    var blowing by mutableStateOf<Bubble?>(null)
+        private set
+    private var blowHeldSec = 0f
+    private var blowFingerX = 0f
+    private var blowFingerY = 0f
+
+    /** True until the player has blown their first bubble: drives the one-time hint. */
+    val showBlowHint: Boolean
+        get() = isFloat && BlowMechanics.HINT_SEEN_MARKER !in economy.seenBubbleTypes &&
+            (economy.popsOn(todayDate()) >= 5 || elapsedSec > 20f)
+
+    /**
+     * Finger down, in screen px. Pops the touched bubble the instant the finger lands
+     * (same frame, not on lift). In Float, touching empty space starts blowing a bubble.
+     */
+    fun onPointerDown(offset: androidx.compose.ui.geometry.Offset) {
+        // Touches on menus/overlays never reach the game.
         if (gameState !is GameState.Playing) return
-        tapChannel.trySend(TapEvent(offset.x / pxPerWorld, offset.y / pxPerWorld, System.currentTimeMillis()))
+        val x = offset.x / pxPerWorld
+        val y = offset.y / pxPerWorld
+        val popped = handleTap(x, y, System.currentTimeMillis())
+        if (popped == 0 && isFloat && blowing == null) {
+            blowHeldSec = 0f
+            blowFingerX = x
+            blowFingerY = y
+            val r = BlowMechanics.startRadius(config)
+            blowing = Bubble(
+                id = System.nanoTime(),
+                x = x,
+                y = BlowMechanics.centerYAboveFinger(y, r),
+                radius = r,
+                color = BubbleSkins.fromName(economy.skin).palette.random(),
+                vx = 0f,
+                vy = 0f,
+                level = 0
+            )
+            soundManager.playBlowStart()
+        }
     }
+
+    fun onPointerMove(offset: androidx.compose.ui.geometry.Offset) {
+        if (blowing == null) return
+        blowFingerX = offset.x / pxPerWorld
+        blowFingerY = offset.y / pxPerWorld
+    }
+
+    fun onPointerUp() {
+        releaseBlownBubble()
+    }
+
+    private fun updateBlowing(dt: Float) {
+        val b = blowing ?: return
+        blowHeldSec += dt
+        val r = BlowMechanics.radiusAt(config, blowHeldSec)
+        val k = min(1f, 14f * dt)
+        val targetY = BlowMechanics.centerYAboveFinger(blowFingerY, r)
+        blowing = b.copy(x = b.x + (blowFingerX - b.x) * k, y = b.y + (targetY - b.y) * k, radius = r)
+        if (BlowMechanics.shouldAutoRelease(blowHeldSec)) releaseBlownBubble()
+    }
+
+    /** Let the blown bubble go: it joins the others and drifts up. A quick tap blows nothing. */
+    private fun releaseBlownBubble() {
+        val b = blowing ?: return
+        blowing = null
+        soundManager.stopBlow()
+        if (blowHeldSec < BlowMechanics.MIN_HOLD_SEC || gameState !is GameState.Playing) return
+        bubbles.add(
+            b.copy(
+                radius = BlowMechanics.releasedRadius(config, b.radius),
+                level = BlowMechanics.levelFor(config, b.radius),
+                vy = -FloatMotion.RISE_SPEED * 0.4f
+            )
+        )
+        soundManager.playBlowRelease()
+        soundManager.vibratePop()
+        if (BlowMechanics.HINT_SEEN_MARKER !in economy.seenBubbleTypes) {
+            viewModelScope.launch { economyRepository.markBubbleTypeSeen(BlowMechanics.HINT_SEEN_MARKER) }
+        }
+    }
+
+    private fun todayDate(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
     /**
      * Start an Adventure session. [level] defaults to 1; passing any previously
@@ -398,6 +470,7 @@ class GameViewModel(
     }
 
     fun pauseGame(silent: Boolean = false) {
+        releaseBlownBubble()
         when (val state = gameState) {
             is GameState.Playing -> {
                 gameState = GameState.Paused(state.score, state.highScore, state.currentLevel, state.isZen, state.isDaily)
@@ -498,6 +571,7 @@ class GameViewModel(
         }
 
         elapsedSec += dt
+        updateBlowing(dt)
         val updatedBubbles = updateBubblesUseCase(
             bubbles.toList(), dt, width, height, currentLevelConfig, isFrozen, slowMoFactor,
             floatMode = isFloat, timeSec = elapsedSec
@@ -513,13 +587,6 @@ class GameViewModel(
         particles.clear()
         particles.addAll(updatedParticles)
 
-        var tapsThisFrame = 0
-        while (tapsThisFrame < 3) {
-            val tap = tapChannel.tryReceive().getOrNull() ?: break
-            handleTap(tap.x, tap.y, tap.timeMs)
-            tapsThisFrame++
-        }
-
         checkPowerUpExpiration()
 
         if (
@@ -534,7 +601,8 @@ class GameViewModel(
         }
     }
 
-    private fun handleTap(tapX: Float, tapY: Float, tapTimeMs: Long) {
+    /** Pops whatever is under the touch; returns how many bubbles popped. */
+    private fun handleTap(tapX: Float, tapY: Float, tapTimeMs: Long): Int {
         lastTapX = tapX
         lastTapY = tapY
         val result = handleTapUseCase(
@@ -560,6 +628,7 @@ class GameViewModel(
 
         bubblesPoppedThisLevel += result.bubblesPopped
         maybeShowTutorialCard(result.newBubbles, result.newMessages)
+        return result.bubblesPopped
     }
 
     /**
@@ -924,6 +993,7 @@ class GameViewModel(
     }
 
     fun goHome() {
+        releaseBlownBubble()
         revertPreviewSkin()
         guaranteeNextPowerUp = false
         lastGameOverState = null
