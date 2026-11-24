@@ -174,8 +174,28 @@ fun generateProceduralLevel(level: Int): LevelConfig {
     )
 }
 
+/**
+ * The game simulates in **world units**, not screen pixels, so bubble size, speed and
+ * difficulty are identical on every phone. One world unit = one pixel on a reference
+ * 420-dpi phone (density 2.625), which is the screen every constant was tuned on.
+ * Screen px = world × (density / REF_DENSITY).
+ */
+object WorldScale {
+    const val REF_DENSITY = 2.625f
+
+    /** Screen pixels per world unit on a device with this [density]. */
+    fun pxPerWorld(density: Float): Float = if (density > 0f) density / REF_DENSITY else 1f
+
+    /** World units for a length given in dp. */
+    fun dpToWorld(dp: Float): Float = dp * REF_DENSITY
+
+    /** Extra touch area around each bubble so near-misses on the rim still pop. */
+    val TOUCH_SLOP: Float = dpToWorld(8f)
+}
+
 data class GameConfig(
-    val minRadius: Float = 40f,
+    // Smallest bubble ≈ 56 dp across (28 dp radius): comfortable touch target on any phone.
+    val minRadius: Float = 74f,
     val radiusStep: Float = 30f,
     val maxBubbleLevel: Int = 3,
     val popTexts: List<String> = listOf("Pop!", "Splendid!", "Awesome!", "Boom!", "Nice!", "Bubble!", "Magic!", "Splosh!", "Glorious!", "Luminous!", "Serene!", "Beautiful!"),

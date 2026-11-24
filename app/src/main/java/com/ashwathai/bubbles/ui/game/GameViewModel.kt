@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ashwathai.bubbles.data.sound.MusicManager
 import com.ashwathai.bubbles.data.sound.SoundManager
+import com.ashwathai.bubbles.domain.model.WorldScale
 import com.ashwathai.bubbles.domain.model.AchievementEngine
 import com.ashwathai.bubbles.domain.model.AudioConfig
 import com.ashwathai.bubbles.domain.model.Achievements
@@ -172,6 +173,8 @@ class GameViewModel(
     private var height: Float = 0f
 
     private val achievementsInFlight = mutableSetOf<String>()
+    private var lastTapX = 0f
+    private var lastTapY = 0f
 
     /**
      * True once the one-time rewarded bonus on the current Level Complete / Game Over
@@ -282,15 +285,22 @@ class GameViewModel(
         }
     }
 
-    fun onSurfaceSizeChanged(w: Float, h: Float) {
-        width = w
-        height = h
+    /** Screen pixels per world unit; the UI scales its drawing by this. */
+    var pxPerWorld by mutableStateOf(1f)
+        private set
+
+    /** Surface size arrives in screen px; the simulation works in world units. */
+    fun onSurfaceSizeChanged(wPx: Float, hPx: Float, density: Float) {
+        pxPerWorld = WorldScale.pxPerWorld(density)
+        width = wPx / pxPerWorld
+        height = hPx / pxPerWorld
     }
 
+    /** [offset] is in screen px (from the pointer); converted to world units here. */
     fun onTap(offset: androidx.compose.ui.geometry.Offset) {
         // Taps on menus/overlays must not be queued and replayed when play resumes.
         if (gameState !is GameState.Playing) return
-        tapChannel.trySend(TapEvent(offset.x, offset.y, System.currentTimeMillis()))
+        tapChannel.trySend(TapEvent(offset.x / pxPerWorld, offset.y / pxPerWorld, System.currentTimeMillis()))
     }
 
     /**
@@ -501,6 +511,8 @@ class GameViewModel(
     }
 
     private fun handleTap(tapX: Float, tapY: Float, tapTimeMs: Long) {
+        lastTapX = tapX
+        lastTapY = tapY
         val result = handleTapUseCase(
             bubbles.toList(), tapX, tapY, config, currentLevelConfig,
             palette = BubbleSkins.fromName(economy.skin).palette,
@@ -633,8 +645,8 @@ class GameViewModel(
                 PopMessage(
                     id = System.nanoTime() + 7,
                     text = "COMBO x$combo!",
-                    x = if (bubbles.isNotEmpty()) bubbles.first().x else width / 2f,
-                    y = if (bubbles.isNotEmpty()) bubbles.first().y else height / 3f,
+                    x = lastTapX,
+                    y = (lastTapY - WorldScale.dpToWorld(40f)).coerceAtLeast(0f),
                     rotation = 0f,
                     scale = 1.2f,
                     color = LuxuryColors.Gold400,

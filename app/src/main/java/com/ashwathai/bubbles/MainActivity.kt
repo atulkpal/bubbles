@@ -64,6 +64,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import kotlin.math.roundToInt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -264,8 +268,11 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
-                detectTapGestures { offset ->
-                    gameViewModel.onTap(offset)
+                // Pop on touch-DOWN (not on lift) so the pop lands the instant the finger does.
+                // Buttons consume their own downs, so menu taps never reach the game.
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    gameViewModel.onTap(down.position)
                 }
             }
             .themeBackground(theme)
@@ -273,9 +280,10 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
         val width = constraints.maxWidth.toFloat()
         val height = constraints.maxHeight.toFloat()
 
+        val density = LocalDensity.current.density
         if (width > 0 && height > 0) {
-            LaunchedEffect(Unit) {
-                gameViewModel.onSurfaceSizeChanged(width, height)
+            LaunchedEffect(width, height, density) {
+                gameViewModel.onSurfaceSizeChanged(width, height, density)
             }
         }
 
@@ -344,6 +352,7 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     theme = theme,
                     shakeTrauma = shakeTrauma,
                     reducedMotion = gameViewModel.reducedMotion,
+                    pxPerWorld = gameViewModel.pxPerWorld,
                     tutorialCard = gameViewModel.tutorialCard,
                     tutorialText = gameViewModel.tutorialCard?.let { gameViewModel.tutorialTextFor(it) },
                     onDismissTutorial = { gameViewModel.dismissTutorialCard() },
@@ -375,7 +384,8 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     reducedMotion = gameViewModel.reducedMotion,
                     onPause = { gameViewModel.resumeGame() },
                     onEndZen = {},
-                    isPaused = true
+                    isPaused = true,
+                    pxPerWorld = gameViewModel.pxPerWorld
                 )
                 PauseOverlay(
                     onResume = { gameViewModel.resumeGame() },
@@ -904,7 +914,8 @@ fun GameScreen(
     onDismissTutorial: () -> Unit = {},
     onPause: () -> Unit,
     onEndZen: () -> Unit,
-    isPaused: Boolean = false
+    isPaused: Boolean = false,
+    pxPerWorld: Float = 1f
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         val shakePx = if (reducedMotion || shakeTrauma <= 0f) {
@@ -922,11 +933,14 @@ fun GameScreen(
                 }
         ) {
             drawRect(Brush.verticalGradient(listOf(theme.top, theme.bottom)))
-            particles.forEach { drawParticle(it, reducedMotion) }
-            bubbles.forEach { drawBubble(it, skin) }
+            // Entities live in world units; scale them onto this screen.
+            withTransform({ scale(pxPerWorld, pxPerWorld, pivot = Offset.Zero) }) {
+                particles.forEach { drawParticle(it, reducedMotion) }
+                bubbles.forEach { drawBubble(it, skin) }
+            }
         }
 
-        messages.forEach { PopMessageView(it) }
+        messages.forEach { PopMessageView(it, pxPerWorld) }
 
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -2029,7 +2043,7 @@ private fun DrawScope.drawClockIcon(cx: Float, cy: Float, s: Float, color: Color
 }
 
 @Composable
-fun PopMessageView(msg: PopMessage) {
+fun PopMessageView(msg: PopMessage, pxPerWorld: Float = 1f) {
     Text(
         text = msg.text,
         color = msg.color.copy(alpha = msg.alpha),
@@ -2043,7 +2057,9 @@ fun PopMessageView(msg: PopMessage) {
             )
         ),
         modifier = Modifier
-            .offset { IntOffset(msg.x.roundToInt() - 50.dp.roundToPx(), msg.y.roundToInt()) }
+            .offset {
+                IntOffset((msg.x * pxPerWorld).roundToInt() - 50.dp.roundToPx(), (msg.y * pxPerWorld).roundToInt())
+            }
             .rotate(msg.rotation)
     )
 }

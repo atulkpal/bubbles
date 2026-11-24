@@ -290,8 +290,10 @@ class HandleTapUseCase {
         multiPopRadius: Float = 0f,
         random: Random = Random.Default
     ): TapResult {
-        val hitIndex = bubbles.indexOfFirst { b ->
-            sqrt((tapX - b.x) * (tapX - b.x) + (tapY - b.y) * (tapY - b.y)) < b.radius
+        // Bubbles are drawn in list order, so the LAST hit is the one on top.
+        val hitIndex = bubbles.indexOfLast { b ->
+            sqrt((tapX - b.x) * (tapX - b.x) + (tapY - b.y) * (tapY - b.y)) <
+                b.radius + com.ashwathai.bubbles.domain.model.WorldScale.TOUCH_SLOP
         }
 
         if (hitIndex == -1) {
