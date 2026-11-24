@@ -124,6 +124,8 @@ import com.ashwathai.bubbles.domain.repository.EconomyRepository
 import com.ashwathai.bubbles.domain.repository.ScoreRepository
 import com.ashwathai.bubbles.domain.repository.SettingsRepository
 import com.ashwathai.bubbles.ui.game.GameViewModel
+import com.ashwathai.bubbles.ui.game.drawSoapBackground
+import com.ashwathai.bubbles.ui.game.drawSoapBubble
 import com.ashwathai.bubbles.ui.settings.SettingsScreen
 import com.ashwathai.bubbles.ui.theme.BubblesTheme
 import com.ashwathai.bubbles.ui.theme.luxury.GlassSurface
@@ -932,11 +934,12 @@ fun GameScreen(
                     translationY = shakePx
                 }
         ) {
-            drawRect(Brush.verticalGradient(listOf(theme.top, theme.bottom)))
+            drawSoapBackground()
+            val timeSec = (System.nanoTime() % 1_000_000_000_000L) / 1_000_000_000f
             // Entities live in world units; scale them onto this screen.
             withTransform({ scale(pxPerWorld, pxPerWorld, pivot = Offset.Zero) }) {
                 particles.forEach { drawParticle(it, reducedMotion) }
-                bubbles.forEach { drawBubble(it, skin) }
+                bubbles.forEach { drawBubble(it, skin, timeSec, wobble = !reducedMotion) }
             }
         }
 
@@ -1749,80 +1752,13 @@ fun GameOverScreen(
     }
 }
 
-private fun DrawScope.drawBubble(bubble: Bubble, skin: BubbleSkin) {
+private fun DrawScope.drawBubble(bubble: Bubble, skin: BubbleSkin, timeSec: Float = 0f, wobble: Boolean = true) {
     val center = Offset(bubble.x, bubble.y)
     val r = bubble.radius
-    val base = bubble.color
+    drawSoapBubble(bubble, timeSec, wobble)
 
-    // Fixed light source — slightly off-center top-left for balanced highlights
-    val lightX = size.width * 0.28f
-    val lightY = size.height * 0.12f
-    val dx = lightX - center.x
-    val dy = lightY - center.y
-    val dist = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(1f)
-    val nx = dx / dist
-    val ny = dy / dist
-
-    // Specular sits closer to the surface edge facing the light
-    val hlOffX = nx * r * 0.48f
-    val hlOffY = ny * r * 0.48f
-    // Secondary specular slightly further in
-    val secX = nx * r * 0.28f
-    val secY = ny * r * 0.28f
-    // Ambient bloom on the shadow side
-    val ambX = -nx * r * 0.38f
-    val ambY = -ny * r * 0.38f
-
-    // 1. Soft outer glow — thinner, tighter to the bubble
-    drawCircle(
-        color = base.copy(alpha = 0.10f),
-        radius = r * 1.08f,
-        center = center,
-        style = Stroke(width = r * 0.05f)
-    )
-
-    // 2. Main glass body — radial gradient biased toward the light
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(base, base.copy(alpha = 0.93f), base.copy(alpha = 0.68f)),
-            center = Offset(center.x + hlOffX * 0.65f, center.y + hlOffY * 0.65f),
-            radius = r * 1.35f
-        ),
-        radius = r,
-        center = center
-    )
-
-    // 3. Lens layer — broad warm bloom toward the light
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(Color.White.copy(alpha = 0.38f), Color.White.copy(alpha = 0.08f), Color.Transparent),
-            center = Offset(center.x + hlOffX, center.y + hlOffY),
-            radius = r * 0.95f
-        ),
-        radius = r,
-        center = center
-    )
-
-    // 4. Primary specular — crisp bright dot near the surface
-    drawCircle(
-        color = Color.White.copy(alpha = 0.92f),
-        radius = r * 0.14f,
-        center = Offset(center.x + hlOffX, center.y + hlOffY)
-    )
-    // 5. Secondary specular — smaller, closer to center
-    drawCircle(
-        color = Color.White.copy(alpha = 0.42f),
-        radius = r * 0.06f,
-        center = Offset(center.x + secX, center.y + secY)
-    )
-    // 6. Ambient glow — soft fill on the shadow side
-    drawCircle(
-        color = Color.White.copy(alpha = 0.11f),
-        radius = r * 0.50f,
-        center = Offset(center.x + ambX, center.y + ambY)
-    )
-
-    val iconColor = if (base.luminance() > 0.55f) LuxuryColors.Ink950 else Color.White
+    // Soap bubbles are clear, so icons are always light.
+    val iconColor = Color.White.copy(alpha = 0.9f)
     val iconSize = r * 1.4f
     when (bubble.bubbleType) {
         BubbleType.NORMAL -> {
@@ -1941,16 +1877,16 @@ private fun DrawScope.drawBubble(bubble: Bubble, skin: BubbleSkin) {
 
     if (bubble.isPowerUp) {
         drawCircle(
-            color = LuxuryColors.Gold400,
+            color = com.ashwathai.bubbles.ui.theme.soap.SoapColors.Lamp.copy(alpha = 0.85f),
             radius = r * 1.1f,
             center = center,
             style = Stroke(width = 2.5.dp.toPx())
         )
         when (bubble.powerUpType) {
-            PowerUpType.SLOW_MO -> drawClockIcon(center.x, center.y, iconSize, LuxuryColors.Ink950)
-            PowerUpType.FREEZE -> drawIceIcon(center.x, center.y, iconSize, LuxuryColors.Ink950)
-            PowerUpType.MULTI_POP -> drawSparkleIcon(center.x, center.y, iconSize, LuxuryColors.Ink950)
-            PowerUpType.PRISM -> drawPrismIcon(center.x, center.y, iconSize, LuxuryColors.Ink950)
+            PowerUpType.SLOW_MO -> drawClockIcon(center.x, center.y, iconSize * 0.8f, iconColor)
+            PowerUpType.FREEZE -> drawIceIcon(center.x, center.y, iconSize * 0.8f, iconColor)
+            PowerUpType.MULTI_POP -> drawSparkleIcon(center.x, center.y, iconSize * 0.8f, iconColor)
+            PowerUpType.PRISM -> drawPrismIcon(center.x, center.y, iconSize * 0.8f, iconColor)
             null -> {}
         }
     }
