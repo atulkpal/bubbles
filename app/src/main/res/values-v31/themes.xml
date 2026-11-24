@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.Bubbles" parent="android:Theme.Material.NoActionBar">
+        <!-- Night-room colour while the app starts, so launch never flashes white. -->
+        <item name="android:windowBackground">#FF0E1022</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <!-- Android 12+ system splash: night-room background instead of white. -->
+        <item name="android:windowSplashScreenBackground">#FF0E1022</item>
+    </style>
+
+</resources>

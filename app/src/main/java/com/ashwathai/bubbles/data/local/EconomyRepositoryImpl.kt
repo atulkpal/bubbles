@@ -22,7 +22,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : EconomyRepository {
+class EconomyRepositoryImpl(
+    private val dataStore: DataStore<Preferences>,
+    private val today: () -> String = {
+        java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+    }
+) : EconomyRepository {
 
     private val COINS_KEY = intPreferencesKey("eco_coins")
     private val SLOWMO_KEY = intPreferencesKey("eco_slowmo")
@@ -39,6 +44,8 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
     private val DAILY_BEST_KEY = intPreferencesKey("eco_daily_best")
     private val SEEN_TYPES_KEY = stringSetPreferencesKey("eco_seen_bubble_types")
     private val ACHIEVEMENTS_KEY = stringSetPreferencesKey("eco_unlocked_achievements")
+    private val POPS_TODAY_KEY = intPreferencesKey("eco_pops_today")
+    private val POPS_DATE_KEY = stringPreferencesKey("eco_pops_date")
 
     /** Serialises every read-modify-write so overlapping coin/stat updates can't lose each other. */
     private val writeLock = Mutex()
@@ -68,7 +75,9 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
                 dailyDate = prefs[DAILY_DATE_KEY] ?: "",
                 dailyBest = prefs[DAILY_BEST_KEY] ?: 0,
                 seenBubbleTypes = prefs[SEEN_TYPES_KEY] ?: emptySet(),
-                unlockedAchievements = prefs[ACHIEVEMENTS_KEY] ?: emptySet()
+                unlockedAchievements = prefs[ACHIEVEMENTS_KEY] ?: emptySet(),
+                popsToday = prefs[POPS_TODAY_KEY] ?: 0,
+                popsDate = prefs[POPS_DATE_KEY] ?: ""
             )
         }
     }
@@ -123,9 +132,16 @@ class EconomyRepositoryImpl(private val dataStore: DataStore<Preferences>) : Eco
 
     override suspend fun recordPops(count: Int) = writeLock.withLock {
         if (count <= 0) return@withLock
-        val newPops = _state.value.lifetimePops + count
-        dataStore.edit { it[POPS_KEY] = newPops }
-        _state.value = _state.value.copy(lifetimePops = newPops)
+        val current = _state.value
+        val date = today()
+        val newPops = current.lifetimePops + count
+        val newToday = current.popsOn(date) + count
+        dataStore.edit {
+            it[POPS_KEY] = newPops
+            it[POPS_TODAY_KEY] = newToday
+            it[POPS_DATE_KEY] = date
+        }
+        _state.value = current.copy(lifetimePops = newPops, popsToday = newToday, popsDate = date)
     }
 
     override suspend fun recordMaxCombo(combo: Int) = writeLock.withLock {

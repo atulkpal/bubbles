@@ -313,6 +313,8 @@ object EconomyConfig {
     const val DAILY_REWARD = 100
     const val DAILY_TIME_LIMIT = 60f
     const val ZEN_MAX_BUBBLES = 18
+    const val FLOAT_MAX_BUBBLES = 7        // calm: a handful on screen at once
+    const val FLOAT_SPAWN_INTERVAL = 1.8f  // seconds between new rising bubbles
     const val ZEN_SPAWN_INTERVAL = 2.5f
 
     const val AD_CONTINUE_TIME_BONUS = 15f // seconds added on a rewarded-ad continue
@@ -353,8 +355,13 @@ data class EconomyState(
     val dailyDate: String = "",
     val dailyBest: Int = 0,
     val seenBubbleTypes: Set<String> = emptySet(),
-    val unlockedAchievements: Set<String> = emptySet()
+    val unlockedAchievements: Set<String> = emptySet(),
+    val popsToday: Int = 0,
+    val popsDate: String = ""
 ) {
+    /** Pops counted on [date] (yyyy-MM-dd); 0 when the stored count is from another day. */
+    fun popsOn(date: String): Int = if (popsDate == date) popsToday else 0
+
     val slowMoDurationMs: Long get() = 5000L + (slowMoLevel - 1) * 1500L
     val freezeDurationMs: Long get() = 3000L + (freezeLevel - 1) * 800L
     val multiPopRadius: Float get() = 150f + (multiPopLevel - 1) * 30f

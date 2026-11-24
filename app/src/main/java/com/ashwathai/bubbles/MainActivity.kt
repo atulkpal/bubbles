@@ -64,6 +64,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.ui.unit.IntOffset
+import com.ashwathai.bubbles.ui.theme.soap.SoapColors
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -193,7 +198,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         LevelPlayAdManager.trackActivity(this)
-        enableEdgeToEdge()
+        // Dark night-room UI everywhere: light status/nav bar icons.
+        enableEdgeToEdge(
+            statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        )
         setContent {
             BubblesTheme {
                 BubbleScreen(gameViewModel)
@@ -255,11 +264,23 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
 
     var showSettings by remember { mutableStateOf(false) }
 
+    // Relaunch: the app opens straight into calm Float mode (no menu first).
+    var openedFloat by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!openedFloat && gameViewModel.gameState is GameState.Ready) {
+            openedFloat = true
+            gameViewModel.startZen()
+        }
+    }
+
     // System Back never closes the app mid-flow: it closes Settings, pauses/resumes play,
     // and returns to the menu from result screens. Only the start screen lets Back exit.
-    BackHandler(enabled = showSettings || gameState !is GameState.Ready) {
+    // Float is "home": Back there leaves the app; Back from the menu returns to Float.
+    val inFloat = gameState is GameState.Playing && gameViewModel.isFloat
+    BackHandler(enabled = showSettings || !inFloat) {
         when {
             showSettings -> showSettings = false
+            gameState is GameState.Ready -> gameViewModel.startZen()
             gameState is GameState.Playing -> gameViewModel.pauseGame()
             gameState is GameState.Paused -> gameViewModel.resumeGame()
             else -> gameViewModel.goHome()
@@ -355,6 +376,8 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     shakeTrauma = shakeTrauma,
                     reducedMotion = gameViewModel.reducedMotion,
                     pxPerWorld = gameViewModel.pxPerWorld,
+                    popsToday = economy.popsOn(todayString()),
+                    onMenu = { gameViewModel.goHome() },
                     tutorialCard = gameViewModel.tutorialCard,
                     tutorialText = gameViewModel.tutorialCard?.let { gameViewModel.tutorialTextFor(it) },
                     onDismissTutorial = { gameViewModel.dismissTutorialCard() },
@@ -566,7 +589,10 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
             )
         }
 
-        LevelPlayBanner(Modifier.align(Alignment.BottomCenter))
+        // No banner while playing (calm promise); menus only.
+        if (gameState !is GameState.Playing && gameState !is GameState.Paused) {
+            LevelPlayBanner(Modifier.align(Alignment.BottomCenter))
+        }
     }
 }
 
@@ -717,7 +743,7 @@ fun StartScreen(
                     }
                     Spacer(modifier = Modifier.height(LuxurySpacing.MD))
                     LuxuryButton(
-                        text = "ZEN MODE",
+                        text = "FLOAT",
                         onClick = onZen,
                         modifier = Modifier.fillMaxWidth(),
                         primary = false,
@@ -889,6 +915,52 @@ fun LogoOrb(reducedMotion: Boolean = false) {
     }
 }
 
+/**
+ * Float mode's whole UI (relaunch spec §3): one quiet "pops today" pill and a small
+ * menu button. Everything else on screen is bubbles.
+ */
+@Composable
+fun FloatHud(popsToday: Int, onMenu: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(top = 12.dp, start = 16.dp, end = 16.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .clip(RoundedCornerShape(50))
+                .background(SoapColors.PillFill)
+                .border(1.dp, SoapColors.PillStroke, RoundedCornerShape(50))
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = if (popsToday == 1) "1 pop today" else "$popsToday pops today",
+                color = SoapColors.TextPrimary,
+                fontSize = 14.sp
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(SoapColors.PillFill)
+                .border(1.dp, SoapColors.PillStroke, CircleShape)
+                .clickable(onClickLabel = "Open menu") { onMenu() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Menu,
+                contentDescription = "Menu",
+                tint = SoapColors.TextPrimary,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
 @Composable
 fun GameScreen(
     width: Float,
@@ -917,7 +989,9 @@ fun GameScreen(
     onPause: () -> Unit,
     onEndZen: () -> Unit,
     isPaused: Boolean = false,
-    pxPerWorld: Float = 1f
+    pxPerWorld: Float = 1f,
+    popsToday: Int = 0,
+    onMenu: () -> Unit = {}
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         val shakePx = if (reducedMotion || shakeTrauma <= 0f) {
@@ -945,7 +1019,9 @@ fun GameScreen(
 
         messages.forEach { PopMessageView(it, pxPerWorld) }
 
-        Box(
+        if (isZen) {
+            FloatHud(popsToday = popsToday, onMenu = onMenu)
+        } else Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.TopCenter
         ) {
@@ -1041,7 +1117,7 @@ fun GameScreen(
             }
         }
 
-        Box(
+        if (!isZen) Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.TopEnd
         ) {

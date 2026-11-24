@@ -52,10 +52,12 @@ class SpawnBubblesUseCase {
         prismBoost: Float = 1f,
         random: Random = Random.Default,
         forcePowerUp: Boolean = false,
-        maxBubbles: Int = Int.MAX_VALUE
+        maxBubbles: Int = Int.MAX_VALUE,
+        floatMode: Boolean = false
     ): List<Bubble> {
         // Spawn at most 1 bubble per call — caller controls timing via spawnInterval
         if (existingBubbles.size >= maxBubbles || width <= 0 || height <= 0) return emptyList()
+        if (floatMode) return listOf(FloatMotion.spawn(config, width, height, palette, random))
 
         val newBubbles = mutableListOf<Bubble>()
 
@@ -217,6 +219,55 @@ class SpawnBubblesUseCase {
     }
 }
 
+/**
+ * Float mode (relaunch spec §4): calm soap bubbles rise from below the screen, sway
+ * gently and drift away off the top. No walls top/bottom, no timer, no fail.
+ * Units are world units (see WorldScale); 1 dp = 2.625 world.
+ */
+object FloatMotion {
+    /** Base rise speed, world units/s (≈ 65 dp/s). */
+    const val RISE_SPEED = 170f
+    /** How quickly velocity eases back to the calm drift after a split kick (1/s). */
+    private const val EASE = 1.1f
+    /** Sideways sway amplitude, world units/s. */
+    private const val SWAY = 28f
+
+    fun riseSpeedFor(b: Bubble): Float = RISE_SPEED * (0.8f + ((b.id ushr 3) % 40L).toFloat() / 100f)
+
+    fun spawn(config: GameConfig, width: Float, height: Float, palette: List<Color>, random: Random): Bubble {
+        val level = 1 + random.nextInt(2) // 1..2 → pops cascade into 3 or 7 bubbles
+        val radius = config.minRadius + level * config.radiusStep
+        val x = if (width > 2 * radius) radius + random.nextFloat() * (width - 2 * radius) else width / 2f
+        val color = palette[random.nextInt(palette.size)]
+        val b = Bubble(
+            id = System.nanoTime() + random.nextLong(),
+            x = x,
+            y = height + radius,
+            radius = radius,
+            color = color,
+            vx = 0f,
+            vy = 0f,
+            level = level
+        )
+        return b.copy(vy = -riseSpeedFor(b))
+    }
+
+    fun update(bubbles: List<Bubble>, dt: Float, width: Float, timeSec: Float): List<Bubble> {
+        val k = min(1f, EASE * dt)
+        return bubbles.map { b ->
+            val phase = (b.id % 997L).toFloat() * 0.37f
+            val targetVx = sin(timeSec * 0.8f + phase) * SWAY
+            val targetVy = -riseSpeedFor(b)
+            var vx = b.vx + (targetVx - b.vx) * k
+            val vy = b.vy + (targetVy - b.vy) * k
+            var x = b.x + vx * dt
+            if (x - b.radius < 0f) { x = b.radius; vx = abs(vx) * 0.5f }
+            else if (x + b.radius > width) { x = width - b.radius; vx = -abs(vx) * 0.5f }
+            b.copy(x = x, y = b.y + vy * dt, vx = vx, vy = vy)
+        }.filter { it.y + it.radius > 0f } // floated away off the top
+    }
+}
+
 class UpdateBubblesUseCase {
 
     operator fun invoke(
@@ -226,8 +277,11 @@ class UpdateBubblesUseCase {
         height: Float,
         levelConfig: LevelConfig,
         isFrozen: Boolean,
-        slowMoFactor: Float
+        slowMoFactor: Float,
+        floatMode: Boolean = false,
+        timeSec: Float = 0f
     ): List<Bubble> {
+        if (floatMode) return FloatMotion.update(bubbles, dt, width, timeSec)
         if (isFrozen) return bubbles
 
         val effectiveDt = dt * slowMoFactor

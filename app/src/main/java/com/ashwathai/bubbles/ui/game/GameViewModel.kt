@@ -27,6 +27,7 @@ import com.ashwathai.bubbles.domain.model.PowerUpType
 import com.ashwathai.bubbles.domain.repository.EconomyRepository
 import com.ashwathai.bubbles.domain.repository.ScoreRepository
 import com.ashwathai.bubbles.domain.repository.SettingsRepository
+import com.ashwathai.bubbles.domain.usecase.FloatMotion
 import com.ashwathai.bubbles.domain.usecase.CanSpawnBubbleUseCase
 import com.ashwathai.bubbles.domain.usecase.CheckLevelCompleteUseCase
 import com.ashwathai.bubbles.domain.usecase.HandleTapUseCase
@@ -75,14 +76,19 @@ class GameViewModel(
     private var mode = GameMode.ADVENTURE
     private var timeSinceLastSpawn = 0f
 
+    /** Float mode (the calm default, formerly Zen): few, slow, large rising bubbles. */
     private val zenLevelConfig = LevelConfig(
         level = 0,
-        maxBubbles = EconomyConfig.ZEN_MAX_BUBBLES,
-        spawnInterval = 2.5f,
-        baseSpeed = 220f,
-        powerUpChance = 0.07f,
+        maxBubbles = EconomyConfig.FLOAT_MAX_BUBBLES,
+        spawnInterval = EconomyConfig.FLOAT_SPAWN_INTERVAL,
+        baseSpeed = FloatMotion.RISE_SPEED,
+        powerUpChance = 0f,
         timeLimit = 99999f
     )
+    private var elapsedSec = 0f
+
+    /** True while the calm Float mode is running (no timer, no score text, no ads). */
+    val isFloat: Boolean get() = mode == GameMode.ZEN
     private val dailyLevelConfig = LevelConfig(
         level = 0,
         maxBubbles = 14,
@@ -294,6 +300,7 @@ class GameViewModel(
         pxPerWorld = WorldScale.pxPerWorld(density)
         width = wPx / pxPerWorld
         height = hPx / pxPerWorld
+        seedFloatIfEmpty()
     }
 
     /** [offset] is in screen px (from the pointer); converted to world units here. */
@@ -325,6 +332,18 @@ class GameViewModel(
             highScore = scoreRepository.zenBest.value,
             isZen = true
         )
+        seedFloatIfEmpty()
+    }
+
+    /** Never open Float on an empty screen: a few bubbles are already drifting up. */
+    private fun seedFloatIfEmpty() {
+        if (!isFloat || gameState !is GameState.Playing || bubbles.isNotEmpty()) return
+        if (width <= 0f || height <= 0f) return
+        val palette = BubbleSkins.fromName(economy.skin).palette
+        repeat(3) { i ->
+            val b = FloatMotion.spawn(config, width, height, palette, Random.Default)
+            bubbles.add(b.copy(y = height * (0.45f + 0.2f * i)))
+        }
     }
 
     fun startDaily() {
@@ -470,14 +489,19 @@ class GameViewModel(
                 specialChance = specialChance,
                 prismBoost = economy.prismBoost,
                 forcePowerUp = forcePowerUp,
-                maxBubbles = currentLevelConfig.maxBubbles
+                maxBubbles = currentLevelConfig.maxBubbles,
+                floatMode = isFloat
             )
             bubbles.addAll(newBubbles)
             bubblesSpawnedThisLevel += newBubbles.size
             maybeShowFirstAppearanceLabel(newBubbles)
         }
 
-        val updatedBubbles = updateBubblesUseCase(bubbles.toList(), dt, width, height, currentLevelConfig, isFrozen, slowMoFactor)
+        elapsedSec += dt
+        val updatedBubbles = updateBubblesUseCase(
+            bubbles.toList(), dt, width, height, currentLevelConfig, isFrozen, slowMoFactor,
+            floatMode = isFloat, timeSec = elapsedSec
+        )
         bubbles.clear()
         bubbles.addAll(updatedBubbles)
 
@@ -521,7 +545,8 @@ class GameViewModel(
 
         bubbles.clear()
         bubbles.addAll(result.newBubbles)
-        messages.addAll(result.newMessages)
+        // Float is quiet: no "Splosh!"-style words, just the pop itself.
+        if (!isFloat) messages.addAll(result.newMessages)
         particles.addAll(result.newParticles)
 
         if (result.bubblesPopped > 0) {
@@ -641,7 +666,7 @@ class GameViewModel(
         if (combo >= 3) {
             soundManager.playCombo()
             soundManager.vibrateCombo()
-            messages.add(
+            if (!isFloat) messages.add(
                 PopMessage(
                     id = System.nanoTime() + 7,
                     text = "COMBO x$combo!",
