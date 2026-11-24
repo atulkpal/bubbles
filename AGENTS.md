@@ -259,4 +259,4 @@ To maintain continuous alignment and prevent code-spec drift, all agents and dev
 | Compose BOM | Managed | `gradle/libs.versions.toml` |
 | Hilt | 2.52 (classpath only, not used — manual DI via AppModule) | `build.gradle.kts` |
 | Ad SDK | ironSource LevelPlay (banners only) | `gradle/libs.versions.toml` |
-| Version | 1.3 (versionCode 4) — approved by owner 2026-11-24 · store title "Hushpop: Bubble Pop & Relax" | `app/build.gradle.kts` + `APP_VERSION` in `MainActivity.kt` |
+| Version | 1.3.1 (versionCode 5) — approved by owner 2026-11-24 (Play pre-review fix: portrait not required) · store title "Hushpop: Bubble Pop & Relax" | `app/build.gradle.kts` + `APP_VERSION` in `MainActivity.kt` |

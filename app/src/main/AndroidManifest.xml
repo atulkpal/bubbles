@@ -8,6 +8,10 @@
     <!-- Required for Google Advertising ID on API 33+ -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
+    <!-- The game is locked to portrait, but must not REQUIRE a portrait screen, or Play
+         hides it from tablets, desktops, Play Games on PC and XR (Play pre-review check). -->
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
+
     <application
         android:name=".BubblesApplication"
         android:allowBackup="true"

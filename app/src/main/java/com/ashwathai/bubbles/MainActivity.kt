@@ -244,7 +244,7 @@ fun Modifier.themeBackground(theme: ThemePalette): Modifier {
 }
 
 /** App version shown in Settings → About. Keep in sync with app/build.gradle.kts. */
-const val APP_VERSION = "1.3"
+const val APP_VERSION = "1.3.1"
 
 /** Short, friendly feedback when an opt-in ad can't be shown (instead of a silent tap). */
 fun showAdUnavailable(context: android.content.Context, reason: String) {
