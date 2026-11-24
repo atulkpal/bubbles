@@ -285,3 +285,24 @@ fun SoapUnlockedChip(soap: Soap, onDismiss: () -> Unit) {
         }
     }
 }
+
+/** Kind end-of-session line: "Nice. 4 breaths." Never a fail message. */
+@Composable
+fun BreatheSummaryChip(breaths: Int, onDismiss: () -> Unit) {
+    LaunchedEffect(breaths) {
+        kotlinx.coroutines.delay(3500)
+        onDismiss()
+    }
+    Box(Modifier.fillMaxSize().statusBarsPadding().padding(top = 72.dp), contentAlignment = Alignment.TopCenter) {
+        Text(
+            if (breaths == 1) "Nice. 1 calm breath." else "Nice. $breaths calm breaths.",
+            color = SoapColors.TextPrimary,
+            fontSize = 16.sp,
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(SoapColors.NightTop.copy(alpha = 0.9f))
+                .border(1.dp, SoapColors.PillStroke, RoundedCornerShape(50))
+                .padding(horizontal = 18.dp, vertical = 10.dp)
+        )
+    }
+}

@@ -10,6 +10,7 @@ import com.ashwathai.bubbles.data.sound.MusicManager
 import com.ashwathai.bubbles.data.sound.SoundManager
 import com.ashwathai.bubbles.domain.model.WorldScale
 import com.ashwathai.bubbles.domain.model.BlowMechanics
+import com.ashwathai.bubbles.domain.model.BreathCycle
 import com.ashwathai.bubbles.domain.model.SoapPopPitch
 import com.ashwathai.bubbles.domain.model.Soap
 import com.ashwathai.bubbles.domain.model.SoapShelf
@@ -99,6 +100,91 @@ class GameViewModel(
     /** Soap just unlocked by a full jar (chip moment). Null = none showing. */
     var newSoapUnlocked by mutableStateOf<Soap?>(null)
         private set
+
+    // ── Breathe mode (relaunch step 5) ──
+    /** The single guided-breath bubble. Null when not breathing. */
+    var breatheBubble by mutableStateOf<Bubble?>(null)
+        private set
+    /** Current breath phase; null = not in a Breathe session. */
+    var breathePhase by mutableStateOf<BreathCycle.Phase?>(null)
+        private set
+    var breatheSecondsLeft by mutableStateOf(0)
+        private set
+    /** Breaths completed in the session that just ended (summary chip). Null = none showing. */
+    var breatheSummary by mutableStateOf<Int?>(null)
+        private set
+    private var breatheCycleT = 0f
+    private var breathsDone = 0
+    private var breathsTarget = 0
+    val isBreathing: Boolean get() = breathePhase != null
+
+    fun startBreathe(minutes: Int) {
+        if (!isFloat || gameState !is GameState.Playing) return
+        releaseBlownBubble()
+        breathsTarget = BreathCycle.breathsIn(minutes)
+        breathsDone = 0
+        breatheSummary = null
+        beginBreath()
+        soundManager.playBlowRelease()
+    }
+
+    /** Ends the session; [completed] shows the kind summary. */
+    fun stopBreathe(completed: Boolean = false) {
+        if (!isBreathing) return
+        breathePhase = null
+        breatheBubble = null
+        if (completed || breathsDone > 0) breatheSummary = breathsDone
+    }
+
+    fun dismissBreatheSummary() { breatheSummary = null }
+
+    private fun beginBreath() {
+        breatheCycleT = 0f
+        breathePhase = BreathCycle.Phase.INHALE
+        breatheBubble = Bubble(
+            id = System.nanoTime(),
+            x = width / 2f,
+            y = height * BreathCycle.heightFraction(0f),
+            radius = BlowMechanics.startRadius(config),
+            color = activeSoap.palette.random(),
+            vx = 0f,
+            vy = 0f,
+            level = 0
+        )
+    }
+
+    private fun updateBreathe(dt: Float) {
+        val b = breatheBubble ?: return
+        breatheCycleT += dt
+        val s = BreathCycle.stateAt(breatheCycleT)
+        if (s.phase != breathePhase) {
+            breathePhase = s.phase
+            if (s.phase != BreathCycle.Phase.DONE) soundManager.vibratePop() // soft cue at each phase
+        }
+        if (s.phase == BreathCycle.Phase.DONE) {
+            popBreathBubble() // it waited long enough: pops itself softly
+            return
+        }
+        val r = BlowMechanics.startRadius(config) +
+            (BlowMechanics.maxRadius(config) * 1.15f - BlowMechanics.startRadius(config)) * BreathCycle.inflation(breatheCycleT)
+        breatheBubble = b.copy(
+            x = width / 2f + sin(elapsedSec * 0.6f) * WorldScale.dpToWorld(6f),
+            y = height * BreathCycle.heightFraction(breatheCycleT),
+            radius = r
+        )
+        val remaining = (breathsTarget - breathsDone - 1) * BreathCycle.CYCLE_SEC + (BreathCycle.CYCLE_SEC - breatheCycleT)
+        breatheSecondsLeft = remaining.toInt().coerceAtLeast(0)
+    }
+
+    /** Pops the breath bubble through the normal pop pipeline (sound, drops, jar). */
+    private fun popBreathBubble() {
+        val b = breatheBubble ?: return
+        breatheBubble = null
+        bubbles.add(b)
+        handleTap(b.x, b.y, System.currentTimeMillis())
+        breathsDone++
+        if (breathsDone >= breathsTarget) stopBreathe(completed = true) else beginBreath()
+    }
 
     fun openShelf() { releaseBlownBubble(); shelfOpen = true }
     fun closeShelf() { shelfOpen = false }
@@ -348,6 +434,17 @@ class GameViewModel(
         if (gameState !is GameState.Playing || shelfOpen) return
         val x = offset.x / pxPerWorld
         val y = offset.y / pxPerWorld
+        if (isBreathing) {
+            val b = breatheBubble
+            val onBreath = b != null &&
+                kotlin.math.hypot(x - b.x, y - b.y) < b.radius + WorldScale.TOUCH_SLOP
+            if (onBreath) {
+                if (BreathCycle.canPop(breatheCycleT)) popBreathBubble()
+                return // not yet: the breath isn't finished
+            }
+            handleTap(x, y, System.currentTimeMillis()) // leftover bubbles still pop; no blowing
+            return
+        }
         val popped = handleTap(x, y, System.currentTimeMillis())
         if (popped == 0 && isFloat && blowing == null) {
             blowHeldSec = 0f
@@ -576,6 +673,7 @@ class GameViewModel(
         timeSinceLastSpawn += dt
         val isEndlessMode = mode != GameMode.ADVENTURE
         if (
+            !isBreathing &&
             timeSinceLastSpawn >= currentLevelConfig.spawnInterval &&
             canSpawnBubbleUseCase(
                 bubblesOnBoard = bubbles.size,
@@ -601,6 +699,7 @@ class GameViewModel(
 
         elapsedSec += dt
         updateBlowing(dt)
+        updateBreathe(dt)
         val updatedBubbles = updateBubblesUseCase(
             bubbles.toList(), dt, width, height, currentLevelConfig, isFrozen, slowMoFactor,
             floatMode = isFloat, timeSec = elapsedSec
@@ -1042,6 +1141,7 @@ class GameViewModel(
 
     fun goHome() {
         releaseBlownBubble()
+        stopBreathe()
         revertPreviewSkin()
         guaranteeNextPowerUp = false
         lastGameOverState = null

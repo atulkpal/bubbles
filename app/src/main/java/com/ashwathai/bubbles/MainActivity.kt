@@ -133,6 +133,8 @@ import com.ashwathai.bubbles.ui.game.GameViewModel
 import com.ashwathai.bubbles.ui.game.drawSoapBackground
 import com.ashwathai.bubbles.ui.game.drawSoapBubble
 import com.ashwathai.bubbles.domain.model.Soap
+import com.ashwathai.bubbles.domain.model.BreathCycle
+import com.ashwathai.bubbles.ui.shelf.BreatheSummaryChip
 import com.ashwathai.bubbles.domain.model.SoapShelf
 import com.ashwathai.bubbles.domain.model.Soaps
 import com.ashwathai.bubbles.ui.shelf.JarIcon
@@ -400,6 +402,11 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     soap = gameViewModel.activeSoap,
                     jarFill = economy.jarDrops / SoapShelf.JAR_CAPACITY.toFloat(),
                     onShelf = { gameViewModel.openShelf() },
+                    breatheBubble = gameViewModel.breatheBubble,
+                    breathePhase = gameViewModel.breathePhase,
+                    breatheSecondsLeft = gameViewModel.breatheSecondsLeft,
+                    onBreathe = { gameViewModel.startBreathe(it) },
+                    onEndBreathe = { gameViewModel.stopBreathe() },
                     tutorialCard = gameViewModel.tutorialCard,
                     tutorialText = gameViewModel.tutorialCard?.let { gameViewModel.tutorialTextFor(it) },
                     onDismissTutorial = { gameViewModel.dismissTutorialCard() },
@@ -569,6 +576,9 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                 onSelect = { gameViewModel.selectSoap(it) },
                 onClose = { gameViewModel.closeShelf() }
             )
+        }
+        gameViewModel.breatheSummary?.let { breaths ->
+            BreatheSummaryChip(breaths = breaths, onDismiss = { gameViewModel.dismissBreatheSummary() })
         }
         gameViewModel.newSoapUnlocked?.let { soap ->
             SoapUnlockedChip(soap = soap, onDismiss = { gameViewModel.dismissSoapChip() })
@@ -954,6 +964,62 @@ fun LogoOrb(reducedMotion: Boolean = false) {
     }
 }
 
+private enum class BreatheChoice(val minutes: Int, val label: String) {
+    ONE(1, "1 min"), THREE(3, "3 min"), FIVE(5, "5 min")
+}
+
+/** Quiet rounded pill used across the Soap UI. */
+@Composable
+fun SoapPillButton(label: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(SoapColors.PillFill)
+            .border(1.dp, SoapColors.PillStroke, RoundedCornerShape(50))
+            .clickable(onClickLabel = label) { onClick() }
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+    ) {
+        Text(label, color = SoapColors.TextPrimary, fontSize = 15.sp)
+    }
+}
+
+/** Breathe session guide: one calm line, and time left with a way out. */
+@Composable
+fun BreatheOverlay(phase: BreathCycle.Phase, secondsLeft: Int, accent: Color, onEnd: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        androidx.compose.animation.Crossfade(
+            targetState = phase,
+            animationSpec = androidx.compose.animation.core.tween(600),
+            label = "breathGuide",
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 190.dp)
+        ) { p ->
+            Text(
+                text = p.guide,
+                color = if (p == BreathCycle.Phase.POP) accent else SoapColors.TextPrimary,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Light
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp)
+        ) {
+            Text(
+                "%d:%02d".format(secondsLeft / 60, secondsLeft % 60),
+                color = SoapColors.TextSecondary,
+                fontSize = 15.sp
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            SoapPillButton("End") { onEnd() }
+        }
+    }
+}
+
 /**
  * Float mode's whole UI (relaunch spec §3): one quiet "pops today" pill and a small
  * menu button. Everything else on screen is bubbles.
@@ -965,8 +1031,11 @@ fun FloatHud(
     showBlowHint: Boolean = false,
     jarFill: Float = 0f,
     jarColor: Color = SoapColors.Lamp,
-    onShelf: () -> Unit = {}
+    onShelf: () -> Unit = {},
+    breathing: Boolean = false,
+    onBreathe: (Int) -> Unit = {}
 ) {
+    var choosingLength by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1015,6 +1084,31 @@ fun FloatHud(
                 tint = SoapColors.TextPrimary,
                 modifier = Modifier.size(22.dp)
             )
+        }
+        if (!breathing && !showBlowHint) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 24.dp)
+            ) {
+                if (choosingLength) {
+                    Text("Breathe for", color = SoapColors.TextSecondary, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        BreatheChoice.entries.forEach { choice ->
+                            SoapPillButton(choice.label) {
+                                choosingLength = false
+                                onBreathe(choice.minutes)
+                            }
+                        }
+                        SoapPillButton("✕") { choosingLength = false }
+                    }
+                } else {
+                    SoapPillButton("Breathe") { choosingLength = true }
+                }
+            }
         }
         if (showBlowHint) {
             Text(
@@ -1065,7 +1159,12 @@ fun GameScreen(
     showBlowHint: Boolean = false,
     soap: Soap = Soaps.CLEAR_NIGHT,
     jarFill: Float = 0f,
-    onShelf: () -> Unit = {}
+    onShelf: () -> Unit = {},
+    breatheBubble: Bubble? = null,
+    breathePhase: BreathCycle.Phase? = null,
+    breatheSecondsLeft: Int = 0,
+    onBreathe: (Int) -> Unit = {},
+    onEndBreathe: () -> Unit = {}
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         val shakePx = if (reducedMotion || shakeTrauma <= 0f) {
@@ -1089,6 +1188,7 @@ fun GameScreen(
                 particles.forEach { drawParticle(it, reducedMotion) }
                 bubbles.forEach { drawBubble(it, skin, timeSec, wobble = !reducedMotion, soap = soap) }
                 blowing?.let { drawSoapBubble(it, timeSec, wobble = !reducedMotion, film = soap.film, lamp = soap.lamp) }
+                breatheBubble?.let { drawSoapBubble(it, timeSec, wobble = !reducedMotion, film = soap.film, lamp = soap.lamp) }
             }
         }
 
@@ -1096,9 +1196,14 @@ fun GameScreen(
 
         if (isZen) {
             FloatHud(
-                popsToday = popsToday, onMenu = onMenu, showBlowHint = showBlowHint,
-                jarFill = jarFill, jarColor = soap.lamp, onShelf = onShelf
+                popsToday = popsToday, onMenu = onMenu,
+                showBlowHint = showBlowHint && breathePhase == null,
+                jarFill = jarFill, jarColor = soap.lamp, onShelf = onShelf,
+                breathing = breathePhase != null, onBreathe = onBreathe
             )
+            if (breathePhase != null) {
+                BreatheOverlay(phase = breathePhase, secondsLeft = breatheSecondsLeft, accent = soap.lamp, onEnd = onEndBreathe)
+            }
         } else Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.TopCenter
