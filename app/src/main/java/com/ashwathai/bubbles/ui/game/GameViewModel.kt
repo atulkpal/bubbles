@@ -104,9 +104,20 @@ class GameViewModel(
         viewModelScope.launch { celebrateNewSoaps(economyRepository.addJarDrops(drops)) }
     }
 
+    /**
+     * Increments at a moment where an in-app review may be appropriate (the Activity applies
+     * ReviewPolicy + the once-only flag). [reviewMomentIsSoap] = it came from a soap unlock.
+     */
+    var reviewMoment by mutableStateOf(0)
+        private set
+    var reviewMomentIsSoap = false
+        private set
+
     /** A full jar: switch to the new soap straight away and celebrate quietly. */
     private suspend fun celebrateNewSoaps(ids: List<String>) {
         if (ids.isEmpty()) return
+        reviewMomentIsSoap = true
+        reviewMoment++
         val soap = Soaps.byId(ids.last())
         economyRepository.selectSoap(soap.id)
         newSoapUnlocked = soap
@@ -1155,6 +1166,8 @@ class GameViewModel(
     fun goHome() {
         releaseBlownBubble()
         stopBreathe()
+        reviewMomentIsSoap = false
+        reviewMoment++
         revertPreviewSkin()
         guaranteeNextPowerUp = false
         lastGameOverState = null

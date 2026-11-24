@@ -244,7 +244,7 @@ fun Modifier.themeBackground(theme: ThemePalette): Modifier {
 }
 
 /** App version shown in Settings → About. Keep in sync with app/build.gradle.kts. */
-const val APP_VERSION = "1.3.1"
+const val APP_VERSION = "1.3.2"
 
 /** Short, friendly feedback when an opt-in ad can't be shown (instead of a silent tap). */
 fun showAdUnavailable(context: android.content.Context, reason: String) {
@@ -275,6 +275,18 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
     val shakeTrauma = gameViewModel.shakeTrauma
 
     var showSettings by remember { mutableStateOf(false) }
+
+    // In-app review (1.3.2): once, at a happy moment, never mid-play.
+    val reviewContext = LocalContext.current
+    val reviewPrompter = remember { com.ashwathai.bubbles.data.review.ReviewPrompter(reviewContext) }
+    LaunchedEffect(gameViewModel.reviewMoment) {
+        val act = reviewContext as? android.app.Activity ?: return@LaunchedEffect
+        if (gameViewModel.reviewMoment == 0) return@LaunchedEffect
+        val fromSoap = gameViewModel.reviewMomentIsSoap
+        // Let the "New soap" chip be enjoyed first.
+        kotlinx.coroutines.delay(if (fromSoap) 4_000 else 800)
+        reviewPrompter.maybeAsk(act, fromSoap, gameViewModel.economy.daysPlayed, gameViewModel.economy.lifetimePops)
+    }
 
     // The Supporter Pack is the former Remove Ads purchase.
     val supporter by BillingManager.adsRemoved.collectAsStateWithLifecycle()

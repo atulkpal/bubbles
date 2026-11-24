@@ -15,8 +15,8 @@ android {
         applicationId = "com.ashwathai.bubbles"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.3.1"
+        versionCode = 6
+        versionName = "1.3.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -115,6 +115,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.billing)
     implementation(libs.androidx.fragment)
+    implementation(libs.play.review.ktx)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
