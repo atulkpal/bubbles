@@ -77,7 +77,16 @@ class SpawnBalanceTest {
         val counts = typeCounts(spawnMany(20, 500))
         val normal = counts[BubbleType.NORMAL] ?: 0
         assertTrue("NORMAL should be 40-65% at level 20, was $normal/500", normal > 200 && normal < 325)
-        assertTrue("GHOST should be possible by level 20", (counts[BubbleType.GHOST] ?: 0) > 0)
+        // Relaunch: the four specials whose effects were never built no longer spawn at all.
+        listOf(BubbleType.MAGNET, BubbleType.TICKING_BOMB, BubbleType.CHAOS, BubbleType.GHOST).forEach {
+            assertEquals("$it must not spawn", 0, counts[it] ?: 0)
+        }
+    }
+
+    @Test
+    fun `Challenge has exactly 20 levels and none is under 30 seconds`() {
+        assertEquals(20, config.levels.size)
+        config.levels.forEach { assertTrue("level ${it.level} ${it.timeLimit}s", it.timeLimit >= 30f) }
     }
 
     @Test

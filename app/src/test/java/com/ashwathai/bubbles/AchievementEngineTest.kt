@@ -92,20 +92,34 @@ class AchievementEngineTest {
     }
 
     @Test
-    fun `clearing level 50 unlocks the whole level family`() {
+    fun `clearing all 20 Challenge levels unlocks the whole level family`() {
         val economy = EconomyState()
         assertEquals(
-            setOf("level_5", "level_20", "level_50"),
-            AchievementEngine.evaluate(economy, highestLevel = 51)
+            setOf("level_5", "level_20"),
+            AchievementEngine.evaluate(economy, highestLevel = 21)
         )
+    }
+
+    // ── Soap family (relaunch) ──
+
+    @Test
+    fun `unlocking a second soap unlocks soap_1`() {
+        val economy = EconomyState(unlockedSoaps = setOf("CLEAR_NIGHT", "LAVENDER_DUSK"))
+        assertEquals(setOf("soap_1"), AchievementEngine.evaluate(economy, 1))
+    }
+
+    @Test
+    fun `owning every soap unlocks soaps_all`() {
+        val economy = EconomyState(unlockedSoaps = com.ashwathai.bubbles.domain.model.Soaps.ALL.map { it.id }.toSet())
+        assertEquals(setOf("soap_1", "soaps_all"), AchievementEngine.evaluate(economy, 1))
     }
 
     // ── Progress family ──
 
     @Test
-    fun `prestige level 1 unlocks prestige_1`() {
-        val economy = EconomyState(prestigeLevel = 1)
-        assertEquals(setOf("prestige_1"), AchievementEngine.evaluate(economy, 1))
+    fun `no achievement depends on removed features (prestige, daily score, level 50)`() {
+        val economy = EconomyState(prestigeLevel = 9, dailyBest = 99_999)
+        assertEquals(emptySet<String>(), AchievementEngine.evaluate(economy, highestLevel = 1))
     }
 
     @Test
@@ -115,9 +129,9 @@ class AchievementEngineTest {
     }
 
     @Test
-    fun `daily best 500 unlocks daily_500`() {
-        val economy = EconomyState(dailyBest = 500)
-        assertEquals(setOf("daily_500"), AchievementEngine.evaluate(economy, 1))
+    fun `popping on 7 different days unlocks days_7`() {
+        val economy = EconomyState(daysPlayed = 7)
+        assertEquals(setOf("days_7"), AchievementEngine.evaluate(economy, 1))
     }
 
     // ── Exactly-once semantics ──
@@ -146,18 +160,18 @@ class AchievementEngineTest {
         val economy = EconomyState(
             lifetimePops = 10_000,
             maxCombo = 99,
-            prestigeLevel = 3,
             gamesPlayed = 500,
-            dailyBest = 5_000
+            daysPlayed = 30,
+            unlockedSoaps = com.ashwathai.bubbles.domain.model.Soaps.ALL.map { it.id }.toSet()
         )
         assertEquals(
             setOf(
                 "pops_100", "pops_1000", "pops_10000",
                 "combo_10", "combo_25", "combo_50",
-                "level_5", "level_20", "level_50",
-                "prestige_1", "games_10", "daily_500"
+                "level_5", "level_20", "soap_1",
+                "soaps_all", "games_10", "days_7"
             ),
-            AchievementEngine.evaluate(economy, highestLevel = 101)
+            AchievementEngine.evaluate(economy, highestLevel = 21)
         )
     }
 }

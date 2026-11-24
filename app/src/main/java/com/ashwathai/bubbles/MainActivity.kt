@@ -139,6 +139,7 @@ import com.ashwathai.bubbles.domain.model.SoapShelf
 import com.ashwathai.bubbles.domain.model.Soaps
 import com.ashwathai.bubbles.ui.shelf.JarIcon
 import com.ashwathai.bubbles.ui.shelf.SoapShelfScreen
+import com.ashwathai.bubbles.ui.menu.HushpopMenu
 import com.ashwathai.bubbles.ui.shelf.SoapUnlockedChip
 import com.ashwathai.bubbles.ui.settings.SettingsScreen
 import com.ashwathai.bubbles.ui.theme.BubblesTheme
@@ -273,6 +274,10 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
 
     var showSettings by remember { mutableStateOf(false) }
 
+    // The Supporter Pack is the former Remove Ads purchase.
+    val supporter by BillingManager.adsRemoved.collectAsStateWithLifecycle()
+    LaunchedEffect(supporter) { gameViewModel.updateSupporter(supporter) }
+
     // Relaunch: the app opens straight into calm Float mode (no menu first).
     var openedFloat by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -317,7 +322,11 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     }
                 }
             }
-            .themeBackground(theme)
+            .background(
+                Brush.verticalGradient(
+                    listOf(gameViewModel.activeSoap.backgroundTop, gameViewModel.activeSoap.backgroundBottom)
+                )
+            )
     ) {
         val width = constraints.maxWidth.toFloat()
         val height = constraints.maxHeight.toFloat()
@@ -331,45 +340,15 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
 
         when (gameState) {
             is GameState.Ready -> {
-                val playedToday = gameViewModel.isDailyCompleted()
-                val activity = LocalContext.current as? android.app.Activity
-                StartScreen(
-                    coins = economy.coins,
-                    dailyBest = economy.dailyBest,
-                    playedToday = playedToday,
+                HushpopMenu(
+                    soap = gameViewModel.activeSoap,
                     highestLevel = gameViewModel.highestLevel,
+                    maxLevel = gameViewModel.challengeLevels,
                     reducedMotion = gameViewModel.reducedMotion,
-                    onStartLevel = { level -> gameViewModel.startGame(level) },
-                    onZen = { gameViewModel.startZen() },
-                    onDaily = { gameViewModel.startDaily() },
-                    onSettings = { showSettings = true },
-                    onPowerUpGuarantee = if (activity != null) {
-                        {
-                            LevelPlayAdManager.loadAndShowRewardedAd(
-                                adType = "powerup_guarantee",
-                                activity = activity,
-                                onAdLoaded = {},
-                                onAdFailed = { reason -> showAdUnavailable(activity, reason) },
-                                onUserEarnedReward = {
-                                    gameViewModel.setGuaranteeNextPowerUp()
-                                }
-                            )
-                        }
-                    } else null,
-                    onDailyRetry = if (playedToday && activity != null) {
-                        {
-                            LevelPlayAdManager.loadAndShowRewardedAd(
-                                adType = "retry_daily",
-                                activity = activity,
-                                onAdLoaded = {},
-                                onAdFailed = { reason -> showAdUnavailable(activity, reason) },
-                                onUserEarnedReward = {
-                                    gameViewModel.startDaily()
-                                }
-                            )
-                        }
-                    } else null,
-                    adsRemaining = LevelPlayAdManager.adsRemaining()
+                    onFloat = { gameViewModel.startZen() },
+                    onChallenge = { level -> gameViewModel.startGame(level) },
+                    onShelf = { gameViewModel.openShelf() },
+                    onSettings = { showSettings = true }
                 )
             }
             is GameState.Playing -> {
@@ -515,7 +494,7 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     onRestart = { gameViewModel.restartGame() },
                     onHome = { gameViewModel.goHome() },
                     onPrestige = { gameViewModel.prestige() },
-                    canPrestige = gameViewModel.canPrestige,
+                    canPrestige = false, // relaunch: prestige removed
                     onContinue = if (!gameState.won && !gameState.zen && !gameState.daily && activity != null) {
                         {
                             LevelPlayAdManager.loadAndShowRewardedAd(
@@ -567,12 +546,27 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
 
         // ── Soap Shelf + "new soap" moment ──
         if (gameViewModel.shelfOpen) {
+            val shelfActivity = LocalContext.current as? android.app.Activity
             SoapShelfScreen(
                 jarDrops = economy.jarDrops,
                 unlocked = economy.unlockedSoaps,
                 activeSoapId = gameViewModel.activeSoap.id,
                 daysPlayed = economy.daysPlayed,
                 today = todayString(),
+                supporter = gameViewModel.isSupporter,
+                onWatchForDrops = shelfActivity?.let { act ->
+                    if (LevelPlayAdManager.adsRemaining() > 0) {
+                        {
+                            LevelPlayAdManager.loadAndShowRewardedAd(
+                                adType = "jar_drops",
+                                activity = act,
+                                onAdLoaded = {},
+                                onAdFailed = { reason -> showAdUnavailable(act, reason) },
+                                onUserEarnedReward = { gameViewModel.addJarBonus(EconomyConfig.REWARDED_JAR_DROPS) }
+                            )
+                        }
+                    } else null
+                },
                 onSelect = { gameViewModel.selectSoap(it) },
                 onClose = { gameViewModel.closeShelf() }
             )
@@ -615,9 +609,7 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                 onUpgrade = { gameViewModel.upgradePowerUp(it) },
                 onSelectSkin = { gameViewModel.selectSkin(it) },
                 onSelectTheme = { gameViewModel.selectTheme(it) },
-                onPrestige = if (gameViewModel.canPrestige) {
-                    { gameViewModel.prestige() }
-                } else null,
+                onPrestige = null, // relaunch: prestige removed
                 onClose = { showSettings = false },
                 onTrySkin = if (activity != null) {
                     { skinName ->
@@ -2250,7 +2242,7 @@ fun PopMessageView(msg: PopMessage, pxPerWorld: Float = 1f) {
         color = msg.color.copy(alpha = msg.alpha),
         fontSize = (msg.fontSize * msg.scale).sp,
         fontWeight = FontWeight.Bold,
-        fontFamily = FontFamily.Serif,
+        fontFamily = FontFamily.SansSerif,
         style = TextStyle(
             shadow = Shadow(
                 color = Color.Black.copy(alpha = 0.4f * msg.alpha),

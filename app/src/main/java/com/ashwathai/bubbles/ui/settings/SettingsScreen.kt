@@ -91,7 +91,12 @@ fun SettingsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.88f)),
+            // Solid night-room backdrop: nothing from the screen underneath bleeds through.
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(com.ashwathai.bubbles.ui.theme.soap.SoapColors.NightTop, com.ashwathai.bubbles.ui.theme.soap.SoapColors.NightBottom)
+                )
+            ),
         contentAlignment = Alignment.Center
     ) {
         GlassSurface(shape = RoundedCornerShape(LuxuryRadius.XL),
@@ -198,20 +203,20 @@ fun SettingsScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                "Remove All Ads",
+                                "Supporter Pack",
                                 style = LuxuryTypography.HeadlineSmall,
                                 color = LuxuryColors.Gold400
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "No banners, no interstitials, no rewarded ads. Rewards grant instantly.",
+                                "Removes every ad for good, unlocks the Moonlit Pearl soap, and bonus videos pay out instantly. Thank you for supporting a one-person studio.",
                                 style = LuxuryTypography.BodySmall,
                                 color = Color.White.copy(alpha = 0.7f),
                                 textAlign = TextAlign.Center
                             )
                             Spacer(modifier = Modifier.height(LuxurySpacing.SM))
                             LuxuryButton(
-                                text = "REMOVE ADS",
+                                text = "BECOME A SUPPORTER",
                                 onClick = onRemoveAds,
                                 modifier = Modifier.fillMaxWidth(),
                                 icon = LuxuryIcons.Sparkle,
@@ -240,96 +245,11 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "Ads removed · Premium",
+                                "Supporter · no ads · thank you",
                                 style = LuxuryTypography.BodyLarge,
                                 color = LuxuryColors.Gold400
                             )
                         }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(LuxurySpacing.MD))
-                LuxurySectionTitle("Upgrades", LuxuryIcons.Bolt)
-                GlassSurface(
-                    shape = RoundedCornerShape(LuxuryRadius.MD)
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        UpgradeRow(
-                            icon = LuxuryIcons.Timer,
-                            label = "Slow-Mo",
-                            tag = "upgrade_slowMo",
-                            detail = "${economy.slowMoDurationMs / 1000}s → ${economy.copy(slowMoLevel = economy.slowMoLevel + 1).slowMoDurationMs / 1000}s",
-                            currentLevel = economy.slowMoLevel,
-                            coins = economy.coins,
-                            onUpgrade = { onUpgrade("slowMo") }
-                        )
-                        UpgradeRow(
-                            icon = LuxuryIcons.Snowflake,
-                            label = "Freeze",
-                            tag = "upgrade_freeze",
-                            detail = "${economy.freezeDurationMs / 1000}s → ${economy.copy(freezeLevel = economy.freezeLevel + 1).freezeDurationMs / 1000}s",
-                            currentLevel = economy.freezeLevel,
-                            coins = economy.coins,
-                            onUpgrade = { onUpgrade("freeze") }
-                        )
-                        UpgradeRow(
-                            icon = LuxuryIcons.Burst,
-                            label = "Multi-Pop",
-                            tag = "upgrade_multiPop",
-                            detail = "${economy.multiPopRadius.toInt()}px → ${economy.copy(multiPopLevel = economy.multiPopLevel + 1).multiPopRadius.toInt()}px",
-                            currentLevel = economy.multiPopLevel,
-                            coins = economy.coins,
-                            onUpgrade = { onUpgrade("multiPop") }
-                        )
-                        UpgradeRow(
-                            icon = LuxuryIcons.Prism,
-                            label = "Prism",
-                            tag = "upgrade_prism",
-                            detail = "x${(economy.prismBoost * 100).toInt()}% → x${(economy.copy(prismLevel = economy.prismLevel + 1).prismBoost * 100).toInt()}%",
-                            currentLevel = economy.prismLevel,
-                            coins = economy.coins,
-                            onUpgrade = { onUpgrade("prism") }
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(LuxurySpacing.MD))
-                LuxurySectionTitle("Skins", LuxuryIcons.Layers)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    BubbleSkins.all.forEach { s ->
-                        val locked = s.needsPrestige && economy.prestigeLevel < 1
-                        val selected = s.name == economy.skin
-                        SkinCard(
-                            skin = s,
-                            locked = locked,
-                            selected = selected,
-                            onClick = { if (!locked) onSelectSkin(s.name) },
-                            onTryAd = if (locked && onTrySkin != null) {{ onTrySkin(s.name) }} else null
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(LuxurySpacing.MD))
-                LuxurySectionTitle("Themes", LuxuryIcons.Tint)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    BubbleThemes.all.forEach { t ->
-                        ThemeCard(
-                            themePalette = t,
-                            selected = t.name == economy.theme,
-                            onClick = { onSelectTheme(t.name) }
-                        )
                     }
                 }
 
@@ -363,21 +283,9 @@ fun SettingsScreen(
                         StatRow("Lifetime pops", "${economy.lifetimePops}")
                         StatRow("Best combo", "x${economy.maxCombo}")
                         StatRow("Games played", "${economy.gamesPlayed}")
-                        StatRow("Prestige", "Lv ${economy.prestigeLevel}")
-                        StatRow("Daily best", "${economy.dailyBest}")
+                        StatRow("Days with Hushpop", "${economy.daysPlayed}")
+                        StatRow("Soaps collected", "${economy.unlockedSoaps.size}")
                     }
-                }
-
-                if (economy.prestigeLevel < 1 && onPrestige != null) {
-                    Spacer(modifier = Modifier.height(LuxurySpacing.MD))
-                    LuxuryButton(
-                        text = "PRESTIGE · GOLD SKIN + 2X COINS",
-                        onClick = onPrestige,
-                        modifier = Modifier.fillMaxWidth(),
-                        primary = false,
-                        icon = LuxuryIcons.Sparkle,
-                        height = 48.dp
-                    )
                 }
 
                 Spacer(modifier = Modifier.height(LuxurySpacing.MD))
@@ -391,7 +299,7 @@ fun SettingsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            "Bubbles",
+                            "Hushpop",
                             style = LuxuryTypography.HeadlineSmall,
                             color = Color.White
                         )

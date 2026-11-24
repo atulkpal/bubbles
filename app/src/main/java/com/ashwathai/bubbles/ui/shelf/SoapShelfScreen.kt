@@ -117,7 +117,9 @@ fun SoapShelfScreen(
     daysPlayed: Int,
     today: String,
     onSelect: (String) -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    supporter: Boolean = false,
+    onWatchForDrops: (() -> Unit)? = null
 ) {
     val todaysSoap = remember(today) { SoapShelf.soapOfTheDay(today) }
     val next = SoapShelf.nextLocked(unlocked)
@@ -127,6 +129,8 @@ fun SoapShelfScreen(
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.55f))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() }
+            .statusBarsPadding()
+            .padding(top = 12.dp)
     ) {
         Column(
             modifier = Modifier
@@ -186,6 +190,20 @@ fun SoapShelfScreen(
                         )
                     }
                 }
+            }
+            if (next != null && onWatchForDrops != null) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    if (supporter) "+50 drops" else "+50 drops · watch a short video",
+                    color = SoapColors.TextPrimary,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(SoapColors.PillFill)
+                        .border(1.dp, SoapColors.PillStroke, RoundedCornerShape(50))
+                        .clickable(onClickLabel = "Add 50 drops") { onWatchForDrops() }
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                )
             }
             Spacer(Modifier.height(20.dp))
 
@@ -247,6 +265,27 @@ fun SoapShelfScreen(
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
                 Spacer(Modifier.height(8.dp))
+            }
+            // Supporter soap
+            val pearl = Soaps.MOONLIT_PEARL
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .then(if (activeSoapId == pearl.id) Modifier.border(1.5.dp, pearl.lamp, RoundedCornerShape(18.dp)) else Modifier)
+                    .clickable(enabled = supporter, onClickLabel = "Use ${pearl.name}") { onSelect(pearl.id) }
+                    .padding(10.dp)
+            ) {
+                SoapSwatch(pearl, locked = !supporter, modifier = Modifier.size(52.dp))
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(pearl.name, color = if (supporter) SoapColors.TextPrimary else SoapColors.TextSecondary, fontSize = 15.sp)
+                    Text(
+                        if (supporter) "Supporter soap · thank you" else "Comes with the Supporter Pack (Settings)",
+                        color = SoapColors.TextSecondary.copy(alpha = 0.7f), fontSize = 12.sp
+                    )
+                }
             }
             Spacer(Modifier.height(12.dp))
             Text(

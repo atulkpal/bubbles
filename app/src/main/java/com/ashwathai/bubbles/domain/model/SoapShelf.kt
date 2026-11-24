@@ -64,10 +64,18 @@ object Soaps {
         backgroundTop = Color(0xFF190C06), backgroundBottom = Color(0xFF341808), lamp = Color(0xFFFFB347), pitch = 0.96f
     )
 
+    /** Exclusive to Supporter Pack owners; never in the jar unlock order. */
+    val MOONLIT_PEARL = Soap(
+        "MOONLIT_PEARL", "Moonlit Pearl",
+        palette = listOf(Color(0xFFF2F0FF), Color(0xFFD6E4FF), Color(0xFFFFE9F2), Color(0xFFE2FFF6)),
+        film = listOf(Color(0xFFFFFFFF), Color(0xFFD6E4FF), Color(0xFFFFD6EC), Color(0xFFD6FFF1), Color(0xFFFFFFFF)),
+        backgroundTop = Color(0xFF0B0D1A), backgroundBottom = Color(0xFF1A1D33), lamp = Color(0xFFE8EEFF), pitch = 1.03f
+    )
+
     /** Starter first, then the unlock order. */
     val ALL = listOf(CLEAR_NIGHT, LAVENDER_DUSK, MONSOON_GLASS, CHAI_STEAM, FIREFLY_NIGHT, SEA_GLASS, MARIGOLD)
 
-    fun byId(id: String?): Soap = ALL.firstOrNull { it.id == id } ?: CLEAR_NIGHT
+    fun byId(id: String?): Soap = (ALL + MOONLIT_PEARL).firstOrNull { it.id == id } ?: CLEAR_NIGHT
 }
 
 /** Jar, unlocks, soap of the day and the kind streak. Pure rules (unit-tested). */
@@ -103,10 +111,11 @@ object SoapShelf {
     }
 
     /** The selected soap is usable if owned, or if it's today's free soap; otherwise the starter. */
-    fun effectiveSoap(selectedId: String, unlocked: Set<String>, date: String): Soap {
+    fun effectiveSoap(selectedId: String, unlocked: Set<String>, date: String, supporter: Boolean = false): Soap {
         val selected = Soaps.byId(selectedId)
-        return if (selected == Soaps.CLEAR_NIGHT || selected.id in unlocked || selected == soapOfTheDay(date)) selected
-        else Soaps.CLEAR_NIGHT
+        val usable = selected == Soaps.CLEAR_NIGHT || selected.id in unlocked || selected == soapOfTheDay(date) ||
+            (selected == Soaps.MOONLIT_PEARL && supporter)
+        return if (usable) selected else Soaps.CLEAR_NIGHT
     }
 
     /**

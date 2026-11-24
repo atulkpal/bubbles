@@ -42,6 +42,7 @@ fun LevelPlayBanner(modifier: Modifier = Modifier) {
     val adsRemoved by BillingManager.adsRemoved.collectAsStateWithLifecycle()
 
     if (adsRemoved) return
+    if (!LevelPlayAdManager.nonRewardedAllowed) return // first sessions are ad-free
     if (!AdConfig.bannerConfigured) return
     if (!sdkReady) return
 

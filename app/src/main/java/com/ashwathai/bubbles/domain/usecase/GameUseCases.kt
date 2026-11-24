@@ -153,11 +153,9 @@ class SpawnBubblesUseCase {
         val baseWeights = linkedMapOf(
             BubbleType.BOMB to 0.20f,
             BubbleType.FROZEN to 0.18f,
-            BubbleType.RAINBOW to 0.22f * prismFactor,
-            BubbleType.MAGNET to 0.14f,
-            BubbleType.TICKING_BOMB to 0.10f,
-            BubbleType.CHAOS to 0.09f,
-            BubbleType.GHOST to 0.07f
+            BubbleType.RAINBOW to 0.22f * prismFactor
+            // Relaunch: MAGNET, TICKING_BOMB, CHAOS and GHOST no longer spawn. Their promised
+            // effects (pull, fuse, fling) were never built; see docs/audit-2026-11-24.
         )
         val zenDailyUnlocked = setOf(BubbleType.BOMB, BubbleType.FROZEN, BubbleType.RAINBOW)
 

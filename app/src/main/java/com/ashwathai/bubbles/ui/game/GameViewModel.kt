@@ -91,7 +91,28 @@ class GameViewModel(
 
     /** The soap in use (selected if owned or today's free soap; otherwise the starter). */
     val activeSoap: Soap
-        get() = SoapShelf.effectiveSoap(economy.selectedSoap, economy.unlockedSoaps, todayDate())
+        get() = SoapShelf.effectiveSoap(economy.selectedSoap, economy.unlockedSoaps, todayDate(), isSupporter)
+
+    /** Supporter Pack owner (the former Remove Ads purchase): ad-free + Moonlit Pearl soap. */
+    var isSupporter by mutableStateOf(false)
+        private set
+
+    fun updateSupporter(owned: Boolean) { isSupporter = owned }
+
+    /** Opt-in rewarded video on the Soap Shelf: "+50 drops". */
+    fun addJarBonus(drops: Int) {
+        viewModelScope.launch { celebrateNewSoaps(economyRepository.addJarDrops(drops)) }
+    }
+
+    /** A full jar: switch to the new soap straight away and celebrate quietly. */
+    private suspend fun celebrateNewSoaps(ids: List<String>) {
+        if (ids.isEmpty()) return
+        val soap = Soaps.byId(ids.last())
+        economyRepository.selectSoap(soap.id)
+        newSoapUnlocked = soap
+        soundManager.playBlowRelease()
+        soundManager.vibrateLevelUp()
+    }
 
     /** Soap Shelf overlay open: the game ignores touches underneath it. */
     var shelfOpen by mutableStateOf(false)
@@ -890,15 +911,7 @@ class GameViewModel(
         }
 
         viewModelScope.launch {
-            val newSoaps = economyRepository.recordPops(result.bubblesPopped)
-            if (newSoaps.isNotEmpty()) {
-                // A full jar: switch to the new soap straight away and celebrate quietly.
-                val soap = Soaps.byId(newSoaps.last())
-                economyRepository.selectSoap(soap.id)
-                newSoapUnlocked = soap
-                soundManager.playBlowRelease()
-                soundManager.vibrateLevelUp()
-            }
+            celebrateNewSoaps(economyRepository.recordPops(result.bubblesPopped))
             if (combo > 1) economyRepository.recordMaxCombo(combo)
         }
     }
@@ -1179,6 +1192,9 @@ class GameViewModel(
             economyRepository.setTheme(name)
         }
     }
+
+    /** Number of Challenge levels (relaunch: 20). */
+    val challengeLevels: Int get() = config.levels.size
 
     /** Prestige is earned by clearing the last level of the Adventure track. */
     val canPrestige: Boolean

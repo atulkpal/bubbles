@@ -13,6 +13,8 @@ interface EconomyRepository {
     /** Records pops (lifetime, today, jar drops, play day). Returns soaps newly unlocked by this fill. */
     suspend fun recordPops(count: Int): List<String>
     suspend fun selectSoap(id: String)
+    /** Adds bonus drops (opt-in rewarded video). Returns soaps newly unlocked. */
+    suspend fun addJarDrops(drops: Int): List<String>
     suspend fun recordMaxCombo(combo: Int)
     suspend fun recordGamePlayed()
     suspend fun prestige()

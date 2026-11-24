@@ -17,17 +17,17 @@ private val fontProvider = GoogleFont.Provider(
 
 val CormorantFamily = FontFamily(
     Font(
-        googleFont = GoogleFont("Cormorant Garamond"),
+        googleFont = GoogleFont("Nunito"),
         fontProvider = fontProvider,
         weight = FontWeight.Bold
     ),
     Font(
-        googleFont = GoogleFont("Cormorant Garamond"),
+        googleFont = GoogleFont("Nunito"),
         fontProvider = fontProvider,
         weight = FontWeight.SemiBold
     ),
     Font(
-        googleFont = GoogleFont("Cormorant Garamond"),
+        googleFont = GoogleFont("Nunito"),
         fontProvider = fontProvider,
         weight = FontWeight.Medium
     )

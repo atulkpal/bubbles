@@ -4,10 +4,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 object LuxuryColors {
-    val Gold600 = Color(0xFFA16207)
-    val Gold500 = Color(0xFFCA8A04)
-    val Gold400 = Color(0xFFF0B429)
-    val Gold300 = Color(0xFFFCD34D)
+    // Relaunch: the old gold accents are re-pointed at the Hushpop night palette
+    // (soft lilac + warm lamp) so every legacy screen matches the soap look.
+    val Gold600 = Color(0xFF8A6BFF)
+    val Gold500 = Color(0xFFB9A6FF)
+    val Gold400 = Color(0xFFFFC98A)
+    val Gold300 = Color(0xFFE6DCFF)
     val GoldGradient = listOf(Gold300, Gold500, Gold600)
 
     val Ink950 = Color(0xFF0C0A09)

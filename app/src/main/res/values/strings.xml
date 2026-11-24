@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Bubbles</string>
+    <string name="app_name">Hushpop</string>
     <string name="game_over">Game Over</string>
     <string name="new_high_score">New High Score!</string>
     <string name="paused">Paused</string>

@@ -39,7 +39,8 @@ class SettingsScreenUiTest {
         onMusicVolumeChange: (Float) -> Unit = {},
         onSelectTheme: (String) -> Unit = {},
         onUpgrade: (String) -> Unit = {},
-        onClose: () -> Unit = {}
+        onClose: () -> Unit = {},
+        onRemoveAds: (() -> Unit)? = null
     ) {
         composeRule.setContent {
             BubblesTheme {
@@ -59,8 +60,9 @@ class SettingsScreenUiTest {
                     onUpgrade = onUpgrade,
                     onSelectSkin = {},
                     onSelectTheme = onSelectTheme,
-                    onPrestige = {},
-                    onClose = onClose
+                    onPrestige = null,
+                    onClose = onClose,
+                    onRemoveAds = onRemoveAds
                 )
             }
         }
@@ -84,7 +86,7 @@ class SettingsScreenUiTest {
         // Scroll to the copyright line (bottom of the About card) so the whole
         // card is on screen. "About" alone matches both the section title and chip.
         scrollTo("Ashwath AI")
-        composeRule.onNodeWithText("Bubbles").assertIsDisplayed()
+        composeRule.onNodeWithText("Hushpop").assertIsDisplayed()
     }
 
     @Test
@@ -98,27 +100,20 @@ class SettingsScreenUiTest {
     }
 
     @Test
-    fun upgradePillCallsUpgradeForSlowMo() {
-        var upgradedKey: String? = null
-        setContent(
-            economy = EconomyState(coins = 500),
-            onUpgrade = { upgradedKey = it }
-        )
-        composeRule.onNodeWithTag("upgrade_slowMo").performClick()
-        assert(upgradedKey == "slowMo")
+    fun relaunchRemovedUpgradesSkinsThemesAndPrestige() {
+        setContent(economy = EconomyState(coins = 5_000))
+        listOf("Upgrades", "Skins", "Themes", "Prestige").forEach {
+            composeRule.onAllNodesWithText(it, ignoreCase = true).assertCountEquals(0)
+        }
     }
 
     @Test
-    fun themeSelectionInvokesCallback() {
-        var selected: String? = null
-        setContent(onSelectTheme = { selected = it })
-        // The Audio card grew (volume sliders), pushing the Themes row below the
-        // fold. Scroll to the next section so the whole row is vertically on
-        // screen, then bring the chip into view inside its horizontal row.
-        scrollTo("Achievements")
-        composeRule.onNodeWithTag("theme_chip_${BubbleThemes.SUNSET.name}").performScrollTo()
-        composeRule.onNodeWithTag("theme_chip_${BubbleThemes.SUNSET.name}").performClick()
-        assert(selected == BubbleThemes.SUNSET.name)
+    fun supporterPackButtonStartsPurchase() {
+        var started = false
+        setContent(onRemoveAds = { started = true })
+        scrollTo("BECOME A SUPPORTER")
+        composeRule.onNodeWithText("BECOME A SUPPORTER").performClick()
+        assert(started)
     }
 
     @Test
@@ -140,7 +135,7 @@ class SettingsScreenUiTest {
     @Test
     fun premiumSectionHiddenWhenAdsRemoved() {
         setContent(adsRemoved = true)
-        composeRule.onAllNodesWithText("Remove All Ads").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Supporter Pack").assertCountEquals(0)
     }
 
     @Test

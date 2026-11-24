@@ -222,11 +222,8 @@ data class GameConfig(
         add(LevelConfig(18, 23, 0.30f, 890f, 0.13f, gravity = 85f, wind = 95f, timeLimit = 21f))
         add(LevelConfig(19, 24, 0.28f, 920f, 0.14f, gravity = 90f, hasBoss = true, wind = 100f, timeLimit = 20f))
         add(LevelConfig(20, 25, 0.26f, 950f, 0.14f, gravity = 95f, wind = 105f, timeLimit = 19f))
-        // ── Procedural levels 21-100 ──
-        for (level in 21..100) {
-            add(generateProceduralLevel(level))
-        }
-    }
+        // Relaunch: procedural levels 21–100 were cut; Challenge is these 20.
+    }.map { it.copy(timeLimit = maxOf(it.timeLimit, EconomyConfig.CHALLENGE_MIN_TIME_SEC)) }
 )
 
 data class ThemePalette(
@@ -318,6 +315,8 @@ object EconomyConfig {
     const val ZEN_SPAWN_INTERVAL = 2.5f
 
     const val AD_CONTINUE_TIME_BONUS = 15f // seconds added on a rewarded-ad continue
+    const val REWARDED_JAR_DROPS = 50      // opt-in video on the Soap Shelf
+    const val CHALLENGE_MIN_TIME_SEC = 30f // relaunch: no Challenge timer under 30 s
     const val COMBO_BONUS_CAP = 10       // combo coin bonus stops growing past this combo
     const val PRESTIGE_UNLOCK_LEVEL = 20 // prestige needs level 20 cleared
 

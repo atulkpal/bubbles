@@ -65,6 +65,15 @@ object LevelPlayAdManager {
     private const val PREFS = "levelplay_ads"
     private const val KEY_DATE = "rewarded_date"
     private const val KEY_COUNT = "rewarded_count"
+    private const val KEY_SESSIONS = "sessions_started"
+    /** Sessions with no banner and no interstitial at all (relaunch spec §8). */
+    const val AD_FREE_SESSIONS = 3
+    private var sessionCount = 0
+
+    /** Banners and interstitials only after the first sessions, and never for supporters. */
+    val nonRewardedAllowed: Boolean
+        get() = sessionCount > AD_FREE_SESSIONS && !BillingManager.adsRemoved.value
+
     private var adsShownToday = 0
     private const val MAX_ADS_PER_DAY = 5
     private var lastAdDate = ""
@@ -76,6 +85,10 @@ object LevelPlayAdManager {
         initAttempted = true
         appContext = context.applicationContext
         loadDailyCount()
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).let { p ->
+            sessionCount = p.getInt(KEY_SESSIONS, 0) + 1
+            p.edit().putInt(KEY_SESSIONS, sessionCount).apply()
+        }
 
         // Privacy signal, set before init: a general-audience game, not directed at
         // children (must match the Play Console target-audience setting).
@@ -300,7 +313,7 @@ object LevelPlayAdManager {
     fun showLevelCompleteInterstitial(activity: Activity, onDone: () -> Unit) {
         val now = System.currentTimeMillis()
         val ad = interstitialAd
-        val canShow = !BillingManager.adsRemoved.value &&
+        val canShow = nonRewardedAllowed &&
             AdConfig.interstitialConfigured && _sdkReady.value &&
             now - lastLevelInterstitialAt >= LEVEL_INTERSTITIAL_MIN_GAP_MS &&
             ad != null && ad.isAdReady

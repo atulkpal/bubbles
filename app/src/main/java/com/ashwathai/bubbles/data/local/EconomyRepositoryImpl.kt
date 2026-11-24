@@ -170,6 +170,18 @@ class EconomyRepositoryImpl(
         fill.newlyUnlocked
     }
 
+    override suspend fun addJarDrops(drops: Int): List<String> = writeLock.withLock {
+        if (drops <= 0) return@withLock emptyList()
+        val current = _state.value
+        val fill = SoapShelf.addDrops(current.jarDrops, current.unlockedSoaps, drops)
+        dataStore.edit {
+            it[JAR_KEY] = fill.jarDrops
+            it[SOAPS_KEY] = fill.unlocked
+        }
+        _state.value = current.copy(jarDrops = fill.jarDrops, unlockedSoaps = fill.unlocked)
+        fill.newlyUnlocked
+    }
+
     override suspend fun selectSoap(id: String) = writeLock.withLock {
         dataStore.edit { it[SELECTED_SOAP_KEY] = id }
         _state.value = _state.value.copy(selectedSoap = id)
