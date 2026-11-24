@@ -10,6 +10,7 @@ import com.ashwathai.bubbles.data.sound.MusicManager
 import com.ashwathai.bubbles.data.sound.SoundManager
 import com.ashwathai.bubbles.domain.model.WorldScale
 import com.ashwathai.bubbles.domain.model.BlowMechanics
+import com.ashwathai.bubbles.domain.model.SoapPopPitch
 import com.ashwathai.bubbles.domain.model.AchievementEngine
 import com.ashwathai.bubbles.domain.model.AudioConfig
 import com.ashwathai.bubbles.domain.model.Achievements
@@ -177,6 +178,9 @@ class GameViewModel(
     private val achievementsInFlight = mutableSetOf<String>()
     private var lastTapX = 0f
     private var lastTapY = 0f
+    private var lastPopRadius = 0f
+    private var popNoteStep = 0
+    private var lastPopAtMs = 0L
 
     /**
      * True once the one-time rewarded bonus on the current Level Complete / Game Over
@@ -357,6 +361,7 @@ class GameViewModel(
         val k = min(1f, 14f * dt)
         val targetY = BlowMechanics.centerYAboveFinger(blowFingerY, r)
         blowing = b.copy(x = b.x + (blowFingerX - b.x) * k, y = b.y + (targetY - b.y) * k, radius = r)
+        soundManager.setBlowProgress(blowHeldSec / BlowMechanics.FULL_SEC)
         if (BlowMechanics.shouldAutoRelease(blowHeldSec)) releaseBlownBubble()
     }
 
@@ -605,6 +610,9 @@ class GameViewModel(
     private fun handleTap(tapX: Float, tapY: Float, tapTimeMs: Long): Int {
         lastTapX = tapX
         lastTapY = tapY
+        lastPopRadius = bubbles.lastOrNull {
+            kotlin.math.hypot(tapX - it.x, tapY - it.y) < it.radius + WorldScale.TOUCH_SLOP
+        }?.radius ?: config.minRadius
         val result = handleTapUseCase(
             bubbles.toList(), tapX, tapY, config, currentLevelConfig,
             palette = BubbleSkins.fromName(economy.skin).palette,
@@ -727,14 +735,21 @@ class GameViewModel(
             shakeTrauma = min(1f, shakeTrauma + 0.6f)
             hitStopRemaining = 0.08f
         } else {
-            soundManager.playPop()
+            popNoteStep = SoapPopPitch.nextStep(popNoteStep, lastPopAtMs, tapTimeMs)
+            lastPopAtMs = tapTimeMs
+            soundManager.playSoapPop(
+                SoapPopPitch.rate(lastPopRadius, config.minRadius, BlowMechanics.maxRadius(config), popNoteStep)
+            )
             soundManager.vibratePop()
             shakeTrauma = min(1f, shakeTrauma + 0.12f)
         }
 
         if (combo >= 3) {
-            soundManager.playCombo()
-            soundManager.vibrateCombo()
+            // Float stays quiet: the rising pentatonic notes are the only "combo" feedback.
+            if (!isFloat) {
+                soundManager.playCombo()
+                soundManager.vibrateCombo()
+            }
             if (!isFloat) messages.add(
                 PopMessage(
                     id = System.nanoTime() + 7,
@@ -747,7 +762,7 @@ class GameViewModel(
                     fontSize = 34
                 )
             )
-            if (combo % 5 == 0) soundManager.playCoin()
+            if (combo % 5 == 0 && !isFloat) soundManager.playCoin()
         }
 
         viewModelScope.launch {

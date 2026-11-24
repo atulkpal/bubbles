@@ -36,6 +36,10 @@ class SoundManager(private val context: Context) {
     private var crackSound: Int = -1
     private var coinSound: Int = -1
     private var clickSound: Int = -1
+    private val soapPops = IntArray(5) { -1 }
+    private var blowLoopSound: Int = -1
+    private var blowReleaseSound: Int = -1
+    private var blowStream: Int = 0
     private var soundsLoaded = 0
     private val totalSounds = 13
 
@@ -94,6 +98,18 @@ class SoundManager(private val context: Context) {
         crackSound = soundPool.load(context, R.raw.crack, 1)
         coinSound = soundPool.load(context, R.raw.coin, 1)
         clickSound = soundPool.load(context, R.raw.click, 1)
+        soapPops[0] = soundPool.load(context, R.raw.soap_pop1, 1)
+        soapPops[1] = soundPool.load(context, R.raw.soap_pop2, 1)
+        soapPops[2] = soundPool.load(context, R.raw.soap_pop3, 1)
+        soapPops[3] = soundPool.load(context, R.raw.soap_pop4, 1)
+        soapPops[4] = soundPool.load(context, R.raw.soap_pop5, 1)
+        blowLoopSound = soundPool.load(context, R.raw.blow_loop, 1)
+        blowReleaseSound = soundPool.load(context, R.raw.blow_release, 1)
+    }
+
+    /** Soft wet soap pop; [rate] comes from SoapPopPitch (size + pentatonic step). */
+    fun playSoapPop(rate: Float) {
+        play(soapPops[Random.nextInt(soapPops.size)], 0.9f, rate)
     }
 
     fun playPop() {
@@ -182,10 +198,29 @@ class SoundManager(private val context: Context) {
         }
     }
 
-    // ── Hold-to-blow (relaunch 3b; dedicated breathy sounds land in 3c) ──
-    fun playBlowStart() {}
-    fun stopBlow() {}
-    fun playBlowRelease() {}
+    // ── Hold-to-blow: a breathy loop whose pitch rises as the bubble grows ──
+    fun playBlowStart() {
+        stopBlow()
+        if (!soundEnabled || blowLoopSound == -1) return
+        val v = (0.55f * sfxVolume).coerceIn(0f, 1f)
+        blowStream = soundPool.play(blowLoopSound, v, v, 1, -1, 0.8f)
+    }
+
+    /** [progress] 0..1 = how full the bubble is. */
+    fun setBlowProgress(progress: Float) {
+        if (blowStream != 0) soundPool.setRate(blowStream, 0.8f + 0.5f * progress.coerceIn(0f, 1f))
+    }
+
+    fun stopBlow() {
+        if (blowStream != 0) {
+            soundPool.stop(blowStream)
+            blowStream = 0
+        }
+    }
+
+    fun playBlowRelease() {
+        play(blowReleaseSound, 0.8f, 1f)
+    }
 
     fun release() {
         soundPool.release()

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hushpop sounds: listen</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0E1022; color: #F4F1FF; max-width: 760px; margin: 40px auto; padding: 0 20px; line-height: 1.5; }
+  h1 { font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid #2A2350; }
+  .row div { flex: 1; }
+  small { color: #B8B3D9; }
+  button { background: #2A2350; color: #F4F1FF; border: 1px solid #4a4380; border-radius: 20px; padding: 8px 16px; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>Hushpop sounds</h1>
+<p>Generated on this PC by <code>tools/sound/make_soap_sounds.py</code> (no third-party samples). Headphones recommended.</p>
+
+<div class="row"><div>Soap pop 1–5<br><small>Each pop in the game picks one at random.</small></div>
+  <audio controls src="../../../app/src/main/res/raw/soap_pop1.ogg"></audio></div>
+<div class="row"><div><small>Pop 2</small></div><audio controls src="../../../app/src/main/res/raw/soap_pop2.ogg"></audio></div>
+<div class="row"><div><small>Pop 3</small></div><audio controls src="../../../app/src/main/res/raw/soap_pop3.ogg"></audio></div>
+<div class="row"><div><small>Pop 4</small></div><audio controls src="../../../app/src/main/res/raw/soap_pop4.ogg"></audio></div>
+<div class="row"><div><small>Pop 5</small></div><audio controls src="../../../app/src/main/res/raw/soap_pop5.ogg"></audio></div>
+
+<div class="row"><div>Pentatonic phrase<br><small>Six quick pops, as heard when popping fast in the game.</small></div>
+  <button id="phrase">Play phrase</button></div>
+
+<div class="row"><div>Blowing a bubble<br><small>Loops while you hold; pitch rises as it grows.</small></div>
+  <audio controls loop src="../../../app/src/main/res/raw/blow_loop.ogg"></audio></div>
+<div class="row"><div>Bubble lets go</div>
+  <audio controls src="../../../app/src/main/res/raw/blow_release.ogg"></audio></div>
+<div class="row"><div>Float ambience (rain + soft music, 2 min loop)</div>
+  <audio controls loop src="../../../app/src/main/res/raw/music_zen.ogg"></audio></div>
+
+<script>
+  // Mirrors SoapPopPitch: pentatonic ratios applied to a mid-size bubble's rate.
+  const ratios = [1, 9/8, 5/4, 3/2, 5/3, 2];
+  document.getElementById('phrase').onclick = () => {
+    ratios.forEach((r, i) => setTimeout(() => {
+      const a = new Audio('../../../app/src/main/res/raw/soap_pop' + (1 + (i % 5)) + '.ogg');
+      a.preservesPitch = false; a.playbackRate = 0.97 * r > 2 ? 0.97 * r / 2 : 0.97 * r; a.play();
+    }, i * 260));
+  };
+</script>
+</body>
+</html>
