@@ -132,6 +132,12 @@ import com.ashwathai.bubbles.domain.repository.SettingsRepository
 import com.ashwathai.bubbles.ui.game.GameViewModel
 import com.ashwathai.bubbles.ui.game.drawSoapBackground
 import com.ashwathai.bubbles.ui.game.drawSoapBubble
+import com.ashwathai.bubbles.domain.model.Soap
+import com.ashwathai.bubbles.domain.model.SoapShelf
+import com.ashwathai.bubbles.domain.model.Soaps
+import com.ashwathai.bubbles.ui.shelf.JarIcon
+import com.ashwathai.bubbles.ui.shelf.SoapShelfScreen
+import com.ashwathai.bubbles.ui.shelf.SoapUnlockedChip
 import com.ashwathai.bubbles.ui.settings.SettingsScreen
 import com.ashwathai.bubbles.ui.theme.BubblesTheme
 import com.ashwathai.bubbles.ui.theme.luxury.GlassSurface
@@ -278,8 +284,9 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
     // and returns to the menu from result screens. Only the start screen lets Back exit.
     // Float is "home": Back there leaves the app; Back from the menu returns to Float.
     val inFloat = gameState is GameState.Playing && gameViewModel.isFloat
-    BackHandler(enabled = showSettings || !inFloat) {
+    BackHandler(enabled = showSettings || !inFloat || gameViewModel.shelfOpen) {
         when {
+            gameViewModel.shelfOpen -> gameViewModel.closeShelf()
             showSettings -> showSettings = false
             gameState is GameState.Ready -> gameViewModel.startZen()
             gameState is GameState.Playing -> gameViewModel.pauseGame()
@@ -390,6 +397,9 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     onMenu = { gameViewModel.goHome() },
                     blowing = gameViewModel.blowing,
                     showBlowHint = gameViewModel.showBlowHint,
+                    soap = gameViewModel.activeSoap,
+                    jarFill = economy.jarDrops / SoapShelf.JAR_CAPACITY.toFloat(),
+                    onShelf = { gameViewModel.openShelf() },
                     tutorialCard = gameViewModel.tutorialCard,
                     tutorialText = gameViewModel.tutorialCard?.let { gameViewModel.tutorialTextFor(it) },
                     onDismissTutorial = { gameViewModel.dismissTutorialCard() },
@@ -422,7 +432,8 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     onPause = { gameViewModel.resumeGame() },
                     onEndZen = {},
                     isPaused = true,
-                    pxPerWorld = gameViewModel.pxPerWorld
+                    pxPerWorld = gameViewModel.pxPerWorld,
+                    soap = gameViewModel.activeSoap
                 )
                 PauseOverlay(
                     onResume = { gameViewModel.resumeGame() },
@@ -545,6 +556,22 @@ fun BubbleScreen(gameViewModel: GameViewModel) {
                     adsRemaining = LevelPlayAdManager.adsRemaining()
                 )
             }
+        }
+
+        // ── Soap Shelf + "new soap" moment ──
+        if (gameViewModel.shelfOpen) {
+            SoapShelfScreen(
+                jarDrops = economy.jarDrops,
+                unlocked = economy.unlockedSoaps,
+                activeSoapId = gameViewModel.activeSoap.id,
+                daysPlayed = economy.daysPlayed,
+                today = todayString(),
+                onSelect = { gameViewModel.selectSoap(it) },
+                onClose = { gameViewModel.closeShelf() }
+            )
+        }
+        gameViewModel.newSoapUnlocked?.let { soap ->
+            SoapUnlockedChip(soap = soap, onDismiss = { gameViewModel.dismissSoapChip() })
         }
 
         // ── Achievement unlock chip (gold glass moment) ──
@@ -932,7 +959,14 @@ fun LogoOrb(reducedMotion: Boolean = false) {
  * menu button. Everything else on screen is bubbles.
  */
 @Composable
-fun FloatHud(popsToday: Int, onMenu: () -> Unit, showBlowHint: Boolean = false) {
+fun FloatHud(
+    popsToday: Int,
+    onMenu: () -> Unit,
+    showBlowHint: Boolean = false,
+    jarFill: Float = 0f,
+    jarColor: Color = SoapColors.Lamp,
+    onShelf: () -> Unit = {}
+) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -952,6 +986,18 @@ fun FloatHud(popsToday: Int, onMenu: () -> Unit, showBlowHint: Boolean = false) 
                 color = SoapColors.TextPrimary,
                 fontSize = 14.sp
             )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(SoapColors.PillFill)
+                .border(1.dp, SoapColors.PillStroke, CircleShape)
+                .clickable(onClickLabel = "Open soap shelf") { onShelf() },
+            contentAlignment = Alignment.Center
+        ) {
+            JarIcon(fill = jarFill, liquid = jarColor, modifier = Modifier.size(30.dp))
         }
         Box(
             modifier = Modifier
@@ -1016,7 +1062,10 @@ fun GameScreen(
     popsToday: Int = 0,
     onMenu: () -> Unit = {},
     blowing: Bubble? = null,
-    showBlowHint: Boolean = false
+    showBlowHint: Boolean = false,
+    soap: Soap = Soaps.CLEAR_NIGHT,
+    jarFill: Float = 0f,
+    onShelf: () -> Unit = {}
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         val shakePx = if (reducedMotion || shakeTrauma <= 0f) {
@@ -1033,20 +1082,23 @@ fun GameScreen(
                     translationY = shakePx
                 }
         ) {
-            drawSoapBackground()
+            drawSoapBackground(soap.backgroundTop, soap.backgroundBottom, soap.lamp)
             val timeSec = (System.nanoTime() % 1_000_000_000_000L) / 1_000_000_000f
             // Entities live in world units; scale them onto this screen.
             withTransform({ scale(pxPerWorld, pxPerWorld, pivot = Offset.Zero) }) {
                 particles.forEach { drawParticle(it, reducedMotion) }
-                bubbles.forEach { drawBubble(it, skin, timeSec, wobble = !reducedMotion) }
-                blowing?.let { drawSoapBubble(it, timeSec, wobble = !reducedMotion) }
+                bubbles.forEach { drawBubble(it, skin, timeSec, wobble = !reducedMotion, soap = soap) }
+                blowing?.let { drawSoapBubble(it, timeSec, wobble = !reducedMotion, film = soap.film, lamp = soap.lamp) }
             }
         }
 
         messages.forEach { PopMessageView(it, pxPerWorld) }
 
         if (isZen) {
-            FloatHud(popsToday = popsToday, onMenu = onMenu, showBlowHint = showBlowHint)
+            FloatHud(
+                popsToday = popsToday, onMenu = onMenu, showBlowHint = showBlowHint,
+                jarFill = jarFill, jarColor = soap.lamp, onShelf = onShelf
+            )
         } else Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.TopCenter
@@ -1854,10 +1906,16 @@ fun GameOverScreen(
     }
 }
 
-private fun DrawScope.drawBubble(bubble: Bubble, skin: BubbleSkin, timeSec: Float = 0f, wobble: Boolean = true) {
+private fun DrawScope.drawBubble(
+    bubble: Bubble,
+    skin: BubbleSkin,
+    timeSec: Float = 0f,
+    wobble: Boolean = true,
+    soap: Soap = Soaps.CLEAR_NIGHT
+) {
     val center = Offset(bubble.x, bubble.y)
     val r = bubble.radius
-    drawSoapBubble(bubble, timeSec, wobble)
+    drawSoapBubble(bubble, timeSec, wobble, film = soap.film, lamp = soap.lamp)
 
     // Soap bubbles are clear, so icons are always light.
     val iconColor = Color.White.copy(alpha = 0.9f)

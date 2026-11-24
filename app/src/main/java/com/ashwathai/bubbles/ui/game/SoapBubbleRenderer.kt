@@ -29,7 +29,13 @@ import kotlin.math.sin
  *  4. a window-shaped specular highlight (top-left) and a warm lamp reflection (bottom-right)
  * The bubble wobbles gently (±3% on two axes) with a per-bubble phase.
  */
-fun DrawScope.drawSoapBubble(bubble: Bubble, timeSec: Float, wobble: Boolean = true) {
+fun DrawScope.drawSoapBubble(
+    bubble: Bubble,
+    timeSec: Float,
+    wobble: Boolean = true,
+    film: List<Color> = SoapColors.Film,
+    lamp: Color = SoapColors.Lamp
+) {
     val c = Offset(bubble.x, bubble.y)
     val r = bubble.radius
     val tint = bubble.color
@@ -53,7 +59,7 @@ fun DrawScope.drawSoapBubble(bubble: Bubble, timeSec: Float, wobble: Boolean = t
         )
 
         // 2. Thin film. Colours lean toward this bubble's tint so chains stay readable.
-        val film = SoapColors.Film.mapIndexed { i, f ->
+        val filmBands = film.mapIndexed { i, f ->
             lerp(f, tint, if (i % 2 == 0) 0.45f else 0.2f).copy(alpha = 0.75f)
         }
         val swirl = Offset(
@@ -63,7 +69,7 @@ fun DrawScope.drawSoapBubble(bubble: Bubble, timeSec: Float, wobble: Boolean = t
         val bounds = Rect(c.x - r, c.y - r, c.x + r, c.y + r)
         drawContext.canvas.saveLayer(bounds, Paint())
         rotate(degrees = (timeSec * 20f + phase * 57f) % 360f, pivot = c) {
-            drawCircle(brush = Brush.sweepGradient(film, center = swirl), radius = r, center = c)
+            drawCircle(brush = Brush.sweepGradient(filmBands, center = swirl), radius = r, center = c)
         }
         // Mask: clear in the middle, film shows mostly near the rim (like a real bubble)
         drawCircle(
@@ -118,7 +124,7 @@ fun DrawScope.drawSoapBubble(bubble: Bubble, timeSec: Float, wobble: Boolean = t
         )
         // 4b. Warm lamp reflection (bottom-right arc)
         drawArc(
-            color = SoapColors.Lamp.copy(alpha = 0.38f),
+            color = lamp.copy(alpha = 0.38f),
             startAngle = 18f,
             sweepAngle = 52f,
             useCenter = false,
@@ -130,12 +136,16 @@ fun DrawScope.drawSoapBubble(bubble: Bubble, timeSec: Float, wobble: Boolean = t
 }
 
 /** Night room: violet gradient, one warm lamp glow top-right, a low haze. Screen px space. */
-fun DrawScope.drawSoapBackground() {
-    drawRect(Brush.verticalGradient(listOf(SoapColors.NightTop, SoapColors.NightBottom)))
+fun DrawScope.drawSoapBackground(
+    top: Color = SoapColors.NightTop,
+    bottom: Color = SoapColors.NightBottom,
+    lamp: Color = SoapColors.Lamp
+) {
+    drawRect(Brush.verticalGradient(listOf(top, bottom)))
     drawCircle(
         brush = Brush.radialGradient(
-            0f to SoapColors.Lamp.copy(alpha = 0.16f),
-            0.45f to SoapColors.Lamp.copy(alpha = 0.05f),
+            0f to lamp.copy(alpha = 0.16f),
+            0.45f to lamp.copy(alpha = 0.05f),
             1f to Color.Transparent,
             center = Offset(size.width * 0.86f, size.height * 0.08f),
             radius = size.width * 0.9f
@@ -146,7 +156,7 @@ fun DrawScope.drawSoapBackground() {
     drawRect(
         brush = Brush.verticalGradient(
             0.6f to Color.Transparent,
-            1f to SoapColors.NightHaze.copy(alpha = 0.55f)
+            1f to lerp(bottom, lamp, 0.12f).copy(alpha = 0.55f)
         )
     )
 }

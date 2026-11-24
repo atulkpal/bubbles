@@ -11,6 +11,9 @@ import com.ashwathai.bubbles.data.sound.SoundManager
 import com.ashwathai.bubbles.domain.model.WorldScale
 import com.ashwathai.bubbles.domain.model.BlowMechanics
 import com.ashwathai.bubbles.domain.model.SoapPopPitch
+import com.ashwathai.bubbles.domain.model.Soap
+import com.ashwathai.bubbles.domain.model.SoapShelf
+import com.ashwathai.bubbles.domain.model.Soaps
 import com.ashwathai.bubbles.domain.model.AchievementEngine
 import com.ashwathai.bubbles.domain.model.AudioConfig
 import com.ashwathai.bubbles.domain.model.Achievements
@@ -84,6 +87,27 @@ class GameViewModel(
         timeLimit = 99999f
     )
     private var elapsedSec = 0f
+
+    /** The soap in use (selected if owned or today's free soap; otherwise the starter). */
+    val activeSoap: Soap
+        get() = SoapShelf.effectiveSoap(economy.selectedSoap, economy.unlockedSoaps, todayDate())
+
+    /** Soap Shelf overlay open: the game ignores touches underneath it. */
+    var shelfOpen by mutableStateOf(false)
+        private set
+
+    /** Soap just unlocked by a full jar (chip moment). Null = none showing. */
+    var newSoapUnlocked by mutableStateOf<Soap?>(null)
+        private set
+
+    fun openShelf() { releaseBlownBubble(); shelfOpen = true }
+    fun closeShelf() { shelfOpen = false }
+    fun dismissSoapChip() { newSoapUnlocked = null }
+
+    fun selectSoap(id: String) {
+        viewModelScope.launch { economyRepository.selectSoap(id) }
+        soundManager.playBlowRelease()
+    }
 
     /** True while the calm Float mode is running (no timer, no score text, no ads). */
     val isFloat: Boolean get() = mode == GameMode.ZEN
@@ -321,7 +345,7 @@ class GameViewModel(
      */
     fun onPointerDown(offset: androidx.compose.ui.geometry.Offset) {
         // Touches on menus/overlays never reach the game.
-        if (gameState !is GameState.Playing) return
+        if (gameState !is GameState.Playing || shelfOpen) return
         val x = offset.x / pxPerWorld
         val y = offset.y / pxPerWorld
         val popped = handleTap(x, y, System.currentTimeMillis())
@@ -335,7 +359,7 @@ class GameViewModel(
                 x = x,
                 y = BlowMechanics.centerYAboveFinger(y, r),
                 radius = r,
-                color = BubbleSkins.fromName(economy.skin).palette.random(),
+                color = activeSoap.palette.random(),
                 vx = 0f,
                 vy = 0f,
                 level = 0
@@ -416,7 +440,7 @@ class GameViewModel(
     private fun seedFloatIfEmpty() {
         if (!isFloat || gameState !is GameState.Playing || bubbles.isNotEmpty()) return
         if (width <= 0f || height <= 0f) return
-        val palette = BubbleSkins.fromName(economy.skin).palette
+        val palette = activeSoap.palette
         repeat(3) { i ->
             val b = FloatMotion.spawn(config, width, height, palette, Random.Default)
             bubbles.add(b.copy(y = height * (0.45f + 0.2f * i)))
@@ -563,7 +587,7 @@ class GameViewModel(
             timeSinceLastSpawn = 0f
             val newBubbles = spawnBubblesUseCase(
                 config, currentLevelConfig, width, height, bubbles.toList(),
-                palette = BubbleSkins.fromName(economy.skin).palette,
+                palette = activeSoap.palette,
                 specialChance = specialChance,
                 prismBoost = economy.prismBoost,
                 forcePowerUp = forcePowerUp,
@@ -615,7 +639,7 @@ class GameViewModel(
         }?.radius ?: config.minRadius
         val result = handleTapUseCase(
             bubbles.toList(), tapX, tapY, config, currentLevelConfig,
-            palette = BubbleSkins.fromName(economy.skin).palette,
+            palette = activeSoap.palette,
             multiPopRadius = if (multiPopActive) economy.multiPopRadius else 0f
         )
 
@@ -738,7 +762,8 @@ class GameViewModel(
             popNoteStep = SoapPopPitch.nextStep(popNoteStep, lastPopAtMs, tapTimeMs)
             lastPopAtMs = tapTimeMs
             soundManager.playSoapPop(
-                SoapPopPitch.rate(lastPopRadius, config.minRadius, BlowMechanics.maxRadius(config), popNoteStep)
+                SoapPopPitch.rate(lastPopRadius, config.minRadius, BlowMechanics.maxRadius(config), popNoteStep) *
+                    activeSoap.pitch
             )
             soundManager.vibratePop()
             shakeTrauma = min(1f, shakeTrauma + 0.12f)
@@ -766,7 +791,15 @@ class GameViewModel(
         }
 
         viewModelScope.launch {
-            economyRepository.recordPops(result.bubblesPopped)
+            val newSoaps = economyRepository.recordPops(result.bubblesPopped)
+            if (newSoaps.isNotEmpty()) {
+                // A full jar: switch to the new soap straight away and celebrate quietly.
+                val soap = Soaps.byId(newSoaps.last())
+                economyRepository.selectSoap(soap.id)
+                newSoapUnlocked = soap
+                soundManager.playBlowRelease()
+                soundManager.vibrateLevelUp()
+            }
             if (combo > 1) economyRepository.recordMaxCombo(combo)
         }
     }

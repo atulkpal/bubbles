@@ -10,7 +10,9 @@ interface EconomyRepository {
     suspend fun setUpgradeLevel(key: String, level: Int)
     suspend fun setSkin(name: String)
     suspend fun setTheme(name: String)
-    suspend fun recordPops(count: Int)
+    /** Records pops (lifetime, today, jar drops, play day). Returns soaps newly unlocked by this fill. */
+    suspend fun recordPops(count: Int): List<String>
+    suspend fun selectSoap(id: String)
     suspend fun recordMaxCombo(combo: Int)
     suspend fun recordGamePlayed()
     suspend fun prestige()

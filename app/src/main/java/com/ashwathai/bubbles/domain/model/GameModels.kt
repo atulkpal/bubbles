@@ -357,7 +357,14 @@ data class EconomyState(
     val seenBubbleTypes: Set<String> = emptySet(),
     val unlockedAchievements: Set<String> = emptySet(),
     val popsToday: Int = 0,
-    val popsDate: String = ""
+    val popsDate: String = "",
+    // ── Soap Shelf (relaunch step 4) ──
+    val jarDrops: Int = 0,
+    val unlockedSoaps: Set<String> = setOf(Soaps.CLEAR_NIGHT.id),
+    val selectedSoap: String = Soaps.CLEAR_NIGHT.id,
+    val daysPlayed: Int = 0,
+    val lastPlayDate: String = "",
+    val soapMigrated: Boolean = false
 ) {
     /** Pops counted on [date] (yyyy-MM-dd); 0 when the stored count is from another day. */
     fun popsOn(date: String): Int = if (popsDate == date) popsToday else 0

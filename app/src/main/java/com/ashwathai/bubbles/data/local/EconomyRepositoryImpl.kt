@@ -12,6 +12,8 @@ import com.ashwathai.bubbles.domain.model.BubbleSkins
 import com.ashwathai.bubbles.domain.model.BubbleThemes
 import com.ashwathai.bubbles.domain.model.EconomyConfig
 import com.ashwathai.bubbles.domain.model.EconomyState
+import com.ashwathai.bubbles.domain.model.SoapShelf
+import com.ashwathai.bubbles.domain.model.Soaps
 import com.ashwathai.bubbles.domain.repository.EconomyRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +48,12 @@ class EconomyRepositoryImpl(
     private val ACHIEVEMENTS_KEY = stringSetPreferencesKey("eco_unlocked_achievements")
     private val POPS_TODAY_KEY = intPreferencesKey("eco_pops_today")
     private val POPS_DATE_KEY = stringPreferencesKey("eco_pops_date")
+    private val JAR_KEY = intPreferencesKey("soap_jar_drops")
+    private val SOAPS_KEY = stringSetPreferencesKey("soap_unlocked")
+    private val SELECTED_SOAP_KEY = stringPreferencesKey("soap_selected")
+    private val DAYS_PLAYED_KEY = intPreferencesKey("soap_days_played")
+    private val LAST_PLAY_KEY = stringPreferencesKey("soap_last_play_date")
+    private val SOAP_MIGRATED_KEY = booleanPreferencesKey("soap_migrated")
 
     /** Serialises every read-modify-write so overlapping coin/stat updates can't lose each other. */
     private val writeLock = Mutex()
@@ -77,8 +85,15 @@ class EconomyRepositoryImpl(
                 seenBubbleTypes = prefs[SEEN_TYPES_KEY] ?: emptySet(),
                 unlockedAchievements = prefs[ACHIEVEMENTS_KEY] ?: emptySet(),
                 popsToday = prefs[POPS_TODAY_KEY] ?: 0,
-                popsDate = prefs[POPS_DATE_KEY] ?: ""
+                popsDate = prefs[POPS_DATE_KEY] ?: "",
+                jarDrops = prefs[JAR_KEY] ?: 0,
+                unlockedSoaps = (prefs[SOAPS_KEY] ?: emptySet()) + Soaps.CLEAR_NIGHT.id,
+                selectedSoap = prefs[SELECTED_SOAP_KEY] ?: Soaps.CLEAR_NIGHT.id,
+                daysPlayed = prefs[DAYS_PLAYED_KEY] ?: 0,
+                lastPlayDate = prefs[LAST_PLAY_KEY] ?: "",
+                soapMigrated = prefs[SOAP_MIGRATED_KEY] ?: false
             )
+            migrateToSoapShelf()
         }
     }
 
@@ -130,18 +145,47 @@ class EconomyRepositoryImpl(
         _state.value = _state.value.copy(theme = name)
     }
 
-    override suspend fun recordPops(count: Int) = writeLock.withLock {
-        if (count <= 0) return@withLock
+    override suspend fun recordPops(count: Int): List<String> = writeLock.withLock {
+        if (count <= 0) return@withLock emptyList()
         val current = _state.value
         val date = today()
         val newPops = current.lifetimePops + count
         val newToday = current.popsOn(date) + count
+        val fill = SoapShelf.addDrops(current.jarDrops, current.unlockedSoaps, count)
+        val (days, lastDay) = SoapShelf.recordPlayDay(current.daysPlayed, current.lastPlayDate, date)
         dataStore.edit {
             it[POPS_KEY] = newPops
             it[POPS_TODAY_KEY] = newToday
             it[POPS_DATE_KEY] = date
+            it[JAR_KEY] = fill.jarDrops
+            it[SOAPS_KEY] = fill.unlocked
+            it[DAYS_PLAYED_KEY] = days
+            it[LAST_PLAY_KEY] = lastDay
         }
-        _state.value = current.copy(lifetimePops = newPops, popsToday = newToday, popsDate = date)
+        _state.value = current.copy(
+            lifetimePops = newPops, popsToday = newToday, popsDate = date,
+            jarDrops = fill.jarDrops, unlockedSoaps = fill.unlocked,
+            daysPlayed = days, lastPlayDate = lastDay
+        )
+        fill.newlyUnlocked
+    }
+
+    override suspend fun selectSoap(id: String) = writeLock.withLock {
+        dataStore.edit { it[SELECTED_SOAP_KEY] = id }
+        _state.value = _state.value.copy(selectedSoap = id)
+    }
+
+    /** One-time: players from before the relaunch get a jar head start from their coins. */
+    private suspend fun migrateToSoapShelf() = writeLock.withLock {
+        val current = _state.value
+        if (current.soapMigrated) return@withLock
+        val fill = SoapShelf.addDrops(current.jarDrops, current.unlockedSoaps, SoapShelf.migrationDrops(current.coins))
+        dataStore.edit {
+            it[JAR_KEY] = fill.jarDrops
+            it[SOAPS_KEY] = fill.unlocked
+            it[SOAP_MIGRATED_KEY] = true
+        }
+        _state.value = current.copy(jarDrops = fill.jarDrops, unlockedSoaps = fill.unlocked, soapMigrated = true)
     }
 
     override suspend fun recordMaxCombo(combo: Int) = writeLock.withLock {
